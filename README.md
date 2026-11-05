@@ -15,6 +15,14 @@ npm run dev -- --host 127.0.0.1
 
 打开命令输出的 localhost 地址。不要直接双击 HTML。目录选择与 PWA 需要 HTTPS 或 localhost。Chrome / Edge 支持只读目录选择；不支持该 API 的浏览器仍可用普通文件选择导入项目、蓝图和角色 `.sav`。
 
+也可以使用安装了 Docker Compose 的 Docker 一键构建并启动生产版：
+
+```sh
+docker compose up --build -d
+```
+
+访问 <http://localhost:8080>；停止并移除容器使用 `docker compose down`。服务仅绑定本机地址，不需要本机安装 Node.js。首次启动需要下载基础镜像和 npm 依赖；应用仍是静态站点，没有后端或存档上传服务。
+
 ```powershell
 npm run check
 npm test

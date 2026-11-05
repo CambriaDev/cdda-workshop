@@ -1,0 +1,16 @@
+.git
+.npm-cache
+node_modules
+dist
+release
+test-results
+playwright-report
+coverage
+tests
+docs
+*.sav
+*.sqlite-wal
+*.sqlite-shm
+.env
+.env.*
+!.env.example
