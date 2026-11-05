@@ -1,0 +1,166 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+# 
+# Translators:
+# 1 23 <pingpin112@sina.com>, 2018
+# 晨光 马 <448367875@qq.com>, 2018
+# Vimsucks Ho <me@vimsucks.com>, 2018
+# 高 励贤 <475964436@qq.com>, 2018
+# Hua Liang <kissoul@gmail.com>, 2018
+# ShenMian <shenmian000@outlook.com>, 2019
+# Alan Zk <488872@qq.com>, 2019
+# Jamie Cyril-Marlowe <zhnmpjma41825@gmail.com>, 2019
+# space J <871171244@qq.com>, 2019
+# 张义钊 <zeroomega93824@gmail.com>, 2019
+# Muye Ma <myk199011@gmail.com>, 2019
+# Jerry <calljerryli@outlook.com>, 2019
+# Jaron <ngtercet@gmail.com>, 2020
+# sleepy熊 <odanobukuma@gmail.com>, 2020
+# newisle newisle <duskgao@gmail.com>, 2020
+# 等离子 坦克 <plasmatank@163.com>, 2020
+# Hua Liang <kissoul@126.com>, 2020
+# 羽 偌 <amaekoromo@vip.qq.com>, 2020
+# dikai li <lidikai3183@sina.com>, 2020
+# 56bcda6c74cf0f8b62fa48b0f8892307_35b4074 <e31b8d73b370e3af0081b348af33266f_405619>, 2020
+# Mein Führer <851000914@qq.com>, 2020
+# a9631cfaf644a0681a11585b8764f5db_68bf37b <bfd9bcabfdc148232385186dd52ddbfe_831683>, 2020
+# Roy Y <yanyx1999@pku.edu.cn>, 2020
+# CK LU <1965630970@qq.com>, 2020
+# li, 2021
+# 939839415 <939839415@qq.com>, 2021
+# Rick Motherfucker <623675817@qq.com>, 2021
+# 长剑de诺恩 <changjiandenuoen@gmail.com>, 2021
+# 铯 132 <qinxin2013@hotmail.com>, 2021
+# s l <3254016346@qq.com>, 2021
+# Pp ra, 2022
+# Caixukun <osudyxxzgc@gmail.com>, 2022
+# LXY 233 <lxy284387197@gmail.com>, 2022
+# sbndjgg <sbndjgg@163.com>, 2022
+# 万 和 <380014507@qq.com>, 2022
+# Heaper327 <jameszhu327@outlook.com>, 2022
+# Dionyse Chen, 2022
+# Tinker 7, 2022
+# paramecium, 2022
+# 鬼苑 虚, 2022
+# 巴达 斯, 2022
+# B MA <maBORUI001@gmail.com>, 2023
+# Player_270 <270601602@qq.com>, 2023
+# Enwact Heon, 2023
+# dos_dogsy, 2023
+# Lin Onetwo <linonetwo012@gmail.com>, 2023
+# startobira <startobira@163.com>, 2023
+# 林容宇, 2023
+# hy h, 2023
+# 烁迪 王, 2023
+# wwkk222208, 2023
+# tu10ng, 2023
+# 杰森 乌里扬科夫, 2023
+# 名 无, 2023
+# jm 01, 2023
+# Licorice, 2023
+# 智也 三上 <464337873@qq.com>, 2023
+# shoo zzzh, 2023
+# 高 翔乐, 2023
+# Sumlord_047, 2023
+# feimaojiafei <27314459@qq.com>, 2024
+# Muwu5g6h8k9nt, 2024
+# Buyue, 2024
+# Proxima-b, 2024
+# Remysxia~w, 2024
+# cellxiecao <cellxiecao@foxmail.com>, 2024
+# JeffChen <timercrack@gmail.com>, 2024
+# Binah Lobotomy, 2024
+# Zarathustra, 2024
+# Enwact Heon, 2024
+# Oner Lnothe, 2024
+# 藻志 白, 2024
+# 积雨_JY, 2024
+# Harvey Guo, 2024
+# 水 汾, 2024
+# liu max, 2024
+# Keyfw Shey, 2024
+# 暴龙战神 无敌, 2024
+# Aeolus, 2024
+# 钰 张, 2024
+# 66 666, 2024
+# 曾泰瑋 <tavid0000@gmail.com>, 2024
+# Mous Anony, 2024
+# DY C, 2024
+# lu ck <cklu2018@gmail.com>, 2024
+# 4c6e1d75b9f86fe32f55f91342c2d6a6, 2024
+# SingleOnion, 2024
+# A sAoA, 2024
+# Le_Notobad, 2024
+# Mizu Izumi, 2024
+# Kris P, 2024
+# hiro9888 <hiro9888@gmail.com>, 2024
+# tree Growing, 2024
+# 0 0, 2024
+# vacuum_vortex <hojackymk2@gmail.com>, 2024
+# iopop, 2024
+# Lane Gao, 2024
+# Mark David, 2024
+# Cheng “Project” Gong, 2024
+# Huaji_Sama, 2024
+# I_dont_know_why, 2024
+# misaka 10987, 2024
+# mmmhj2, 2024
+# msqc188, 2024
+# Piab343, 2024
+# none none <1038412237@qq.com>, 2025
+# Zicheng Jiang, 2025
+# 半闲 喵, 2025
+# EhNuhc Nehc <ehnuhc@gmail.com>, 2025
+# the disconsolate mercenary, 2025
+# Silencess <silencess_m@qq.com>, 2025
+# busizhe, 2025
+# Dao Da <zyywo1@yeah.net>, 2025
+# Aloxaf <aloxafx@gmail.com>, 2025
+# cheems, 2025
+# Middo <18119928570@163.com>, 2025
+# yetacc, 2025
+# GeekDuanLian <dl@pbstu.com>, 2025
+# 祝 东, 2025
+# Yuki Yuu, 2025
+# qq0696, 2025
+# Wink Storm, 2025
+# name name, 2025
+# f x, 2025
+# Haotian Zhang <zbluesky39@gmail.com>, 2025
+# typeryougishiki, 2025
+# bing zhen <3554106656@qq.com>, 2025
+# 嘿咻大侠, 2025
+# MC RANK, 2025
+# Lucky, 2025
+# Cmxsppd, 2025
+# 藻志 白, 2025
+# 何方神圣 何 <1366003560@qq.com>, 2025
+# Rocket F, 2025
+# u, 2025
+# 陈睿, 2025
+# Chen Yooooo <a0194112@yahoo.com.tw>, 2025
+# Schrodinger_Sig, 2025
+# Guderiss <Guderiss@outlook.com>, 2025
+# EArias, 2025
+# Orchestra, 2025
+# 梦辉 郭 <guo87995585@163.com>, 2025
+# Mr.Centes <mr.centes@qq.com>, 2025
+# JGFoxtrot, 2025
+# cainiao <cainiaowu@hotmail.com>, 2025
+# L rient <1972308206@qq.com>, 2025
+# ZiYuanShang, 2025
+# Vialfish, 2025
+# Brett Dong <brett.browning.dong@gmail.com>, 2025
+# David Park, 2025
+# Charles Yen <d9wu0qu42u4@gmail.com>, 2025
+# Hao JK <haojk0829@gmail.com>, 2025
+# Yuan Yu <peterpen4370@gmail.com>, 2025
+# Jianxiang Wang <qrox@sina.com>, 2025
+# Amans Tofu <kwl01skz@gmail.com>, 2025
+# canglan753, 2025
+# nehzwhs, 2025
+# stellawitcher77, 2025
+# BTSU_Edelweiss, 2025
+# 

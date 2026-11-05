@@ -1,0 +1,83 @@
+import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+
+test('production editor loads real data, edits, downloads and reimports a project', async ({ page }) => {
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: '安装到当前格' })).toBeEnabled();
+  await page.getByRole('textbox', { name: '搜索部件' }).fill('frame');
+  await page.locator('.part-row').filter({ has: page.locator('small', { hasText: /^frame$/ }) }).click();
+  await page.getByRole('button', { name: '安装到当前格' }).click();
+  await expect(page.locator('.installed-row')).toHaveCount(1);
+  await page.getByRole('button', { name: '撤销', exact: true }).click(); await expect(page.locator('.installed-row')).toHaveCount(0);
+  await page.getByRole('button', { name: '重做', exact: true }).click(); await expect(page.locator('.installed-row')).toHaveCount(1);
+  await page.getByRole('button', { name: '导出', exact: true }).click();
+  const downloadPromise = page.waitForEvent('download'); await page.getByRole('button', { name: '下载文件', exact: true }).click();
+  const download = await downloadPromise; const file = await download.path(); expect(file).not.toBeNull();
+  await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByTitle('新建', { exact: true }).click(); await expect(page.locator('.installed-row')).toHaveCount(0);
+  await page.locator('input[type=file]').first().setInputFiles(file!); await expect(page.locator('.installed-row')).toHaveCount(1);
+  await page.getByRole('button', { name: '简体中文', exact: true }).click(); await expect(page.getByRole('heading', { name: 'Build for the road ahead.' })).toBeVisible();
+  await page.getByLabel('Vehicle prototype', { exact: true }).selectOption('motorcycle');
+  await expect(page.locator('.vehicle-grid > g')).toHaveCount(4);
+  await page.getByRole('button', { name: 'Export', exact: true }).click();
+  await page.getByRole('button', { name: 'Game blueprint mod ZIP', exact: true }).click();
+  const zipPending = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download file', exact: true }).click();
+  const zipFile = await (await zipPending).path();
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByTitle('New', { exact: true }).click();
+  await expect(page.locator('.vehicle-grid > g')).toHaveCount(1); // empty-state SVG group
+  await page.locator('input[type=file]').first().setInputFiles({ name: 'motorcycle.zip', mimeType: 'application/zip', buffer: readFileSync(zipFile!) });
+  await expect(page.locator('.vehicle-grid > g')).toHaveCount(4);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: 'tests/artifacts/workshop-en.png', fullPage: true });
+  expect(errors).toEqual([]);
+});
+
+test('full offline preparation survives page close, reload, locale change and export', async ({ page, context }) => {
+  await page.goto('/'); await expect(page.getByRole('button', { name: '安装到当前格' })).toBeEnabled();
+  await page.getByRole('button', { name: '准备离线使用', exact: true }).click();
+  await expect(page.getByText('离线资源已校验并就绪', { exact: true })).toBeVisible({ timeout: 120_000 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: 'tests/artifacts/workshop-zh.png', fullPage: true });
+  await context.setOffline(true); await page.close();
+  const reopened = await context.newPage(); await reopened.goto('/');
+  await expect(reopened.getByRole('button', { name: '安装到当前格' })).toBeEnabled();
+  await expect(reopened.getByText('离线资源已校验并就绪', { exact: true })).toBeVisible();
+  await reopened.getByRole('textbox', { name: '搜索部件' }).fill('frame');
+  await reopened.locator('.part-row').filter({ has: reopened.locator('small', { hasText: /^frame$/ }) }).click();
+  await reopened.getByRole('button', { name: '安装到当前格' }).click();
+  await reopened.getByRole('button', { name: '简体中文', exact: true }).click();
+  await reopened.getByRole('button', { name: 'Export', exact: true }).click();
+  const pending = reopened.waitForEvent('download'); await reopened.getByRole('button', { name: 'Download file', exact: true }).click();
+  expect((await pending).suggestedFilename()).toContain('.cdda-project.json');
+  await reopened.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  await reopened.getByRole('button', { name: /Data & mods/ }).click();
+  await expect(reopened.getByText('0.I-1', { exact: false }).first()).toBeVisible();
+  await reopened.getByRole('checkbox', { name: /Enable Magiclysm/i }).check();
+  await reopened.getByRole('button', { name: 'Apply composition', exact: true }).click();
+  await expect(reopened.getByRole('button', { name: 'Apply composition', exact: true })).toBeDisabled();
+  await expect(reopened.locator('.dataset-card').filter({ has: reopened.locator('code', { hasText: /^magiclysm$/ }) }).getByText('DELIVERED · ENABLED', { exact: true })).toBeVisible();
+  await reopened.getByRole('button', { name: /Save workbench/ }).click();
+  const fixture = readFileSync(new URL('../fixtures/anonymous.sav', import.meta.url), 'utf8');
+  await reopened.locator('.save-file-input input').setInputFiles({ name: 'anonymous.sav', mimeType: 'application/json', buffer: Buffer.from(fixture) });
+  await expect(reopened.getByRole('heading', { name: 'Anonymous acceptance fixture', exact: true })).toBeVisible();
+  await reopened.getByRole('textbox', { name: 'Template filename', exact: true }).fill('offline-transfer');
+  await reopened.getByRole('button', { name: 'Generate preview', exact: true }).click();
+  await expect(reopened.locator('.save-preview')).toContainText('preserve-me');
+  const templateDownload = reopened.waitForEvent('download');
+  await reopened.getByRole('button', { name: 'Download .template', exact: true }).click();
+  expect((await templateDownload).suggestedFilename()).toBe('offline-transfer.template');
+  await context.setOffline(false);
+});
+
+test('narrow viewport keeps the editor and primary controls usable', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: '安装到当前格' })).toBeEnabled();
+  await page.getByRole('button', { name: '简体中文', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Install on selected tile', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391);
+  await page.screenshot({ path: 'tests/artifacts/workshop-mobile.png', fullPage: true });
+});

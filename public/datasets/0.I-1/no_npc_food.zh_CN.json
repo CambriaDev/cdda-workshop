@@ -1,0 +1,1 @@
+{"domain":"no_npc_food","language":"zh_CN","pluralForms":"nplurals=1; plural=0;","messages":[{"msgid":"Disable NPC Needs","translations":["NPC无基本需求"],"fuzzy":false},{"msgid":"Makes NPCs not require food, water or rest.","translations":["让NPC不再需要食物、水和休息。"],"fuzzy":false}]}

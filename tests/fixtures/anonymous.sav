@@ -1,0 +1,2 @@
+# version 36
+{"savegame_loading_version":36,"player":{"name":"Anonymous acceptance fixture","str_max":8,"dex_max":9,"int_max":10,"per_max":11,"skills":{},"body":{"torso":{"hp_cur":50,"hp_max":100}},"vitamin_levels":{},"daily_vitamins":{},"assigned_invlet":[],"inv":[],"worn":[],"effects":{},"damage_over_time_map":[],"learned_recipes":[],"custom_unknown_field":"preserve-me"}}

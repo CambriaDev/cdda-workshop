@@ -1,0 +1,3 @@
+# Preserve verbatim upstream notices, including their original whitespace.
+public/datasets/0.I-1/LICENSE.txt -whitespace
+public/datasets/0.I-1/translation-credits.txt -whitespace
