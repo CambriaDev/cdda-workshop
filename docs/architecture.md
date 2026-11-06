@@ -33,6 +33,7 @@ editor/
 │  └─ main.tsx                 # React 浏览器入口
 ├─ tools/
 │  ├─ extract-data/             # 从只读游戏/模组源码提取可分发数据
+│  ├─ rebuild-vehicle-library.ts # 复用运行时目录规则，生成可复查的部件库审计清单
 │  ├─ offline-worker.js         # 离线 Service Worker 模板
 │  ├─ package-release.mjs       # 静态发布 ZIP 与 SHA-256
 │  └─ third-party-notices.mjs   # 构建浏览器依赖许可清单
@@ -56,7 +57,8 @@ editor/
        └─ public/datasets/（JSON 定义、翻译、manifest、诊断、来源/许可）
             └─ App 加载 manifest + Data Worker 校验文件哈希
                  └─ domain/data/compose.ts 按用户启用与排序组合
-                      └─ 数据页 / 载具工坊读取本次组合
+                      ├─ 完整索引 → 数据页 / 导入、检查、校验、导出
+                      └─ buildVehicleLibrary → 当前组合的载具部件库 → 新增安装
 ```
 
 提取器默认从项目同级 `0.I-branch` 和 `mod_repo` 只读读取，并只写入 `public/datasets/`；需匹配已核实提交。`public/datasets/` 是游戏 JSON/PO 等提取后的静态资源，不是应用 UI 翻译的同一机制：应用 UI 使用 `src/app/context.tsx` 中显式双语字符串，游戏定义名称可从分包 PO 翻译读取。数据组合器实现的是编辑器需要的**有限静态预览**，不是通用 JSON loader，也不完整实现游戏所有继承、finalize、模组交互和校验语义。诊断或 `_incomplete` 标记表示不确定性，不应当解释成游戏加载成功。第三方内容是否打包还受许可审计约束。

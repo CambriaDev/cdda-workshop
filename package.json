@@ -10,6 +10,8 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "extract": "tsx tools/extract-data/index.ts",
+    "rebuild:library": "tsx tools/rebuild-vehicle-library.ts",
+    "check:library": "tsx tools/rebuild-vehicle-library.ts --check",
     "check": "tsc -b",
     "release": "npm run build && node tools/package-release.mjs"
   },

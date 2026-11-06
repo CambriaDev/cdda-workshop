@@ -38,6 +38,17 @@ npm run test:e2e
 
 检查结果应同时报告命令、环境、通过/跳过情况。单元和浏览器测试不能替代实际游戏导入验收；现有实测基线和待验证事项以[验收清单](acceptance.md)为准。文档更新不要求触发构建或发布命令：`npm run build` 会改写 `public/THIRD-PARTY-NOTICES.txt` 并生成 `dist/`，应确认这是预期后再运行。
 
+## 重建载具部件库
+
+修改部件库规则或已交付数据后运行：
+
+```powershell
+npm run rebuild:library
+npm run check:library
+```
+
+该命令验证公开数据包哈希，复用运行时组合器与目录规则，重新生成[部件库审计清单](generated/vehicle-library.json)，覆盖核心和12个已交付包各自带依赖的组合。`--check` 只检查完整清单是否过期，不写文件。运行时目录仍按用户当前模组组合动态重建，不读取静态清单。无需删除完整物品/家电定义、清空本地草稿或重新提取游戏数据。规则和边界见[部件库重建](vehicle-library.md)。
+
 ## 何时重新提取游戏数据
 
 只在更新或重现游戏/模组数据时运行：

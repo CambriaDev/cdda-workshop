@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Layers, Plus, Trash2 } from 'lucide-react';
 import { useApp } from '../../app/context';
-import type { Issue, VehicleIndexes, VehicleModel } from '../../domain/vehicle';
+import { flags, isVehicleLibraryPart, type Issue, type VehicleIndexes, type VehicleModel } from '../../domain/vehicle';
 import { PartDetails } from './PartDetails';
 import { PartInstanceState } from './PartInstanceState';
 
@@ -20,6 +20,7 @@ export function PartInspector({ chosen, indexes, vehicle, selected, partIndex, o
   const left = useRef<HTMLDivElement>(null); const right = useRef<HTMLDivElement>(null);
   const id = useId();
   const current = indexes.parts.get(chosen);
+  const canInstall = isVehicleLibraryPart(current);
   const here = vehicle.parts.map((part, index) => ({ part, index })).filter(({ part }) => part.mount_dx === selected[0] && part.mount_dy === selected[1]);
   const inspected = partIndex !== null && here.some(({ index }) => index === partIndex) ? vehicle.parts[partIndex] : undefined;
   const definition = inspected ? indexes.parts.get(inspected.id) : undefined;
@@ -39,10 +40,13 @@ export function PartInspector({ chosen, indexes, vehicle, selected, partIndex, o
     <div className="inspector-columns">
       <section className="inspector-column" id={`${id}-a`} aria-label={t('部件库 A', 'Library A')} data-mobile-active={mobilePane === 'a'}>
         <header className="inspector-column-heading"><strong>{t('部件库 A · 额定详情', 'LIBRARY A · RATINGS')}</strong><div className="inspector-column-actions">
-          <button className="install-button" disabled={!current} onClick={onInstall}><Plus size={15} />{t('安装到当前格', 'Install on selected tile')}</button>
+          <button className="install-button" disabled={!canInstall} onClick={onInstall}><Plus size={15} />{t('安装到当前格', 'Install on selected tile')}</button>
           <button disabled={!current} onClick={pin}>{t('将当前部件设为对照 B', 'Use current part as B')}</button>
         </div></header>
         <div className="inspector-column-body" ref={left}>
+          <p className="detail-note">{t('安装对象是载具部件 ID；底层物品 ID 表示关联物品，不用于自动转换部件。独立家电不列入此库。', 'Installation uses the vehicle part ID. The base item ID identifies the associated item, not a part conversion. Standalone appliances are excluded.')}</p>
+          {flags(current).includes('NO_INSTALL_PLAYER') && <p className="detail-note">{t('此部件在游戏中禁止玩家手动安装；编辑器保留其预设设计能力，不模拟玩家技能、工具或材料。', 'The game forbids manual player installation of this part. The editor permits prototype design, not a simulation of player skills, tools or materials.')}</p>}
+          {current && !canInstall && <p className="warning-text">{t('当前条目不属于可添加的载具部件库；请选择其他部件。已导入的同类部件仍保留。', 'This entry is not addable from the vehicle library. Choose another part; imported instances are preserved.')}</p>}
           <PartDetails key={chosen} partId={chosen} indexes={indexes} />
           {current?._incomplete === true && <p className="warning-text">{t('此定义包含未适配语义；受影响字段标为未知，原始定义可在高级数据中查看。', 'This definition has unsupported semantics; affected fields are unknown. See advanced data for the definition.')}</p>}
         </div>

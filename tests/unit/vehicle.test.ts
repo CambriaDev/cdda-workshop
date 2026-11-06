@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { compose } from '../../src/domain/data/compose';
 import type { DataPackage } from '../../src/domain/data/types';
 import { strToU8, zipSync } from 'fflate';
-import { calculateStats, createProject, createVehicle, exportBlueprint, exportBlueprintZip, getFuelChoices, importVehicleFile, installPart, parseJsonSafely, parseProject, previewMigration, removePart, renameVehicle, serializeProject, updateProject, validateVehicle, type Definition, type VehicleIndexes, type VehicleModel } from '../../src/domain/vehicle';
+import { buildVehicleLibrary, calculateStats, createProject, createVehicle, exportBlueprint, exportBlueprintZip, getFuelChoices, importVehicleFile, installPart, isVehicleLibraryPart, parseJsonSafely, parseProject, previewMigration, removePart, renameVehicle, serializeProject, updateProject, validateVehicle, type Definition, type VehicleIndexes, type VehicleModel } from '../../src/domain/vehicle';
 import { LosslessNumber, stringifyLosslessJSON, type JsonValue } from '../../src/domain/save/losslessJson';
 const defs = (...values: Definition[]) => new Map(values.map(d => [d.id, d]));
 const indexes = (): VehicleIndexes => ({
@@ -138,6 +138,48 @@ describe('reliable stats distinguish partial data', () => {
     expect(installed.ok).toBe(true); expect(installed.vehicle.parts[0]!.base?.typeid).toBe('frame');
     expect(calculateStats(installed.vehicle, ix).emptyWeight).toEqual({ known: 20000, missing: 0, complete: true, unit: 'g' });
     expect(calculateStats(installed.vehicle, ix).totalWeight.complete).toBe(true);
+  });
+  it('allows the bundled vehicle chest freezer on a frame, but rejects its appliance counterpart', () => {
+    const manifest = JSON.parse(readFileSync(new URL('../../public/datasets/manifest.json', import.meta.url), 'utf8'));
+    const entry = manifest.packages.find((p: { id: string }) => p.id === 'dda');
+    const dda = JSON.parse(readFileSync(new URL(`../../public/datasets/${entry.file}`, import.meta.url), 'utf8')) as DataPackage;
+    const data = compose([dda], ['dda']);
+    const ix: VehicleIndexes = { parts: new Map(Object.entries(data.parts)), items: new Map(Object.entries(data.items)), flagRequirements: new Map() };
+    expect(data.parts.frame.location).toBe('structure');
+    expect(data.parts.chest_minifreezer.location).toBe('center');
+    expect(data.parts.chest_minifreezer.flags).not.toContain('APPLIANCE');
+    expect(data.parts.ap_chest_minifreezer.location).toBe('structure');
+    expect(data.parts.ap_chest_minifreezer.flags).toContain('APPLIANCE');
+    expect(isVehicleLibraryPart(data.parts.chest_minifreezer)).toBe(true);
+    expect(isVehicleLibraryPart(data.parts.ap_chest_minifreezer)).toBe(false);
+    expect(isVehicleLibraryPart(data.items.chest_minifreezer)).toBe(false);
+    const library = buildVehicleLibrary(data);
+    expect(library.entries.every(({ definition }) => definition.type === 'vehicle_part' && !(definition.flags as string[] | undefined)?.includes('APPLIANCE'))).toBe(true);
+    expect(library.byId.get('chest_minifreezer')?.baseItemId).toBe('chest_minifreezer');
+    expect(library.excluded).toContainEqual({ id: 'ap_chest_minifreezer', reason: 'appliance' });
+    const turrets = Object.values(data.parts).filter(d => d._generated && isVehicleLibraryPart(d));
+    expect(turrets.length).toBeGreaterThan(0);
+    expect(turrets.every(d => library.byId.has(d.id))).toBe(true);
+    const report = JSON.parse(readFileSync(new URL('../../docs/generated/vehicle-library.json', import.meta.url), 'utf8'));
+    expect(report.core.entries.map((entry: { id: string }) => entry.id)).toEqual(library.entries.map(entry => entry.id));
+    expect(report.core.excluded).toEqual(library.excluded);
+    const base = installPart(createVehicle('freezer test'), { id: 'frame', x: 0, y: 0 }, ix);
+    expect(base.ok).toBe(true);
+    const mounted = installPart(base.vehicle, { id: 'chest_minifreezer', x: 0, y: 0 }, ix);
+    expect(mounted.ok).toBe(true);
+    expect(mounted.issues).toEqual([]);
+    expect(mounted.vehicle.parts[1]).toMatchObject({ id: 'chest_minifreezer', base: { typeid: 'chest_minifreezer' } });
+    expect(exportBlueprint(mounted.vehicle, {}, ix).prototype.parts).toEqual(expect.arrayContaining([expect.objectContaining({ parts: ['chest_minifreezer'] })]));
+    expect(validateVehicle(mounted.vehicle, ix)).toEqual([]);
+    const appliance = installPart(base.vehicle, { id: 'ap_chest_minifreezer', x: 0, y: 0 }, ix);
+    expect(appliance.ok).toBe(false);
+    expect(appliance.issues).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'location-conflict', message: 'Location structure is occupied.' })]));
+    expect(appliance.vehicle).toEqual(base.vehicle);
+    const truck = importVehicleFile(JSON.stringify(data.vehicles.icecream_truck)).vehicle;
+    for (const x of [-2, -3]) {
+      expect(truck.parts.filter(p => p.mount_dx === x && p.mount_dy === 0).map(p => p.id)).toEqual(['frame', 'chest_minifreezer', 'roof']);
+    }
+    expect(validateVehicle(truck, ix).filter(i => i.code === 'location-conflict')).toEqual([]);
   });
   it('reports rated kW/hp but never labels simple sum actual power', () => {
     const v: VehicleModel = { name: 'v', parts: [frame(), { id: 'engine', mount_dx: 0, mount_dy: 0 }] };

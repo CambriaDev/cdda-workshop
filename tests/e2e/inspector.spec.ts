@@ -11,6 +11,22 @@ async function choose(page: Page, id: string) {
   await page.locator('.part-row').filter({ has: page.locator('small', { hasText: new RegExp(`^${id}$`) }) }).click();
 }
 
+test('vehicle library excludes standalone appliances and installs the vehicle freezer on a frame without ID conversion', async ({ page }) => {
+  await ready(page);
+  await page.getByRole('button', { name: 'Install on selected tile', exact: true }).click();
+  await choose(page, 'chest_minifreezer');
+  const rows = page.locator('.part-row');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.locator('small')).toHaveText('chest_minifreezer');
+  await page.getByRole('button', { name: 'Install on selected tile', exact: true }).click();
+  await expect(page.getByTestId('installed-part-details').locator('code').first()).toHaveText('chest_minifreezer');
+  await expect(page.locator('.installed-row')).toHaveCount(2);
+  await expect(page.locator('.inspector-diagnostics .issue-list')).not.toContainText('location-conflict');
+  await page.getByRole('textbox', { name: 'Search parts' }).fill('ap_chest_minifreezer');
+  await expect(rows).toHaveCount(0);
+  await expect(page.getByTestId('installed-part-details').locator('code').first()).toHaveText('chest_minifreezer');
+});
+
 test('purpose-first cards expose appliance capabilities and engine energy before secondary dimensions', async ({ page }) => {
   await ready(page);
   const details = page.getByTestId('library-part-details');
@@ -125,11 +141,16 @@ test('pinned mod definitions become unavailable and recover after composition ch
   await page.getByRole('button', { name: '将当前部件设为对照 B', exact: true }).click();
   await expect(page.getByTestId('comparison-part-details').locator('code').first()).toHaveText(id);
   await mod(false);
+  await expect(page.locator('.part-list .part-row')).toHaveCount(0);
+  await expect(page.locator('.install-button')).toBeDisabled();
   await expect(page.getByText('对照部件在当前数据中不可用', { exact: false })).toBeVisible();
   await expect(page.getByTestId('comparison-part-details').locator('code').first()).toHaveText(id);
   await choose(page, 'frame');
   await expect(page.getByTestId('comparison-part-details').locator('code').first()).toHaveText(id);
   await mod(true);
+  await choose(page, id);
+  await expect(page.locator('.part-row small').filter({ hasText: new RegExp(`^${id}$`) })).toHaveCount(1);
+  await expect(page.locator('.install-button')).toBeEnabled();
   await expect(page.getByText('对照部件在当前数据中不可用', { exact: false })).toHaveCount(0);
   await expect(page.getByTestId('comparison-part-details').locator('[data-detail="fixed_consumption"]')).toContainText('1 kW');
 });
