@@ -5,7 +5,7 @@ import { validateVehicle } from './model';
 import { nestedItems } from './stats';
 import { parseJsonSafely, parseProject } from './project';
 export interface BlueprintOptions { id?: string; modId?: string; dependencies?: string[] }
-export interface BlueprintExport { prototype: Record<string, unknown>; modInfo: Record<string, unknown>; losses: Issue[]; files: Record<string, string>; gameValidated: false }
+export interface BlueprintExport { prototype: Record<string, unknown>; modInfo: Record<string, unknown>; losses: Issue[]; files: Record<string, string>; modId: string; gameValidated: false }
 export function safeFilename(value: string): string { const clean = value.normalize('NFKC').replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 72); return clean && !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(clean) ? clean : 'vehicle'; }
 function stableId(vehicle: VehicleModel): string { let hash = 2166136261; for (const ch of stringifyLosslessJSON(vehicle as unknown as JsonValue, 0)) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619); return `workshop_${safeFilename(vehicle.name).toLowerCase()}_${(hash >>> 0).toString(16)}`; }
 export function exportBlueprint(vehicle: VehicleModel, options: BlueprintOptions, indexes: VehicleIndexes): BlueprintExport {
@@ -66,7 +66,7 @@ export function exportBlueprint(vehicle: VehicleModel, options: BlueprintOptions
   const modInfo = { type: 'MOD_INFO', id: modId, name: `${vehicle.name} (Workshop blueprint)`, authors: ['CDDA Workshop user'], description: 'Editor-generated 0.I-1 vehicle blueprint. Read loss-report.json; game validation has not been performed.', category: 'vehicles', dependencies: [...new Set(['dda', ...options.dependencies ?? []])] };
   const readme = `# Vehicle blueprint: ${vehicle.name}\n\nTarget source: CDDA 0.I-1 (7b2efa5). GAME VALIDATION NOT PERFORMED.\n\nExtract this folder into a game-recognized mods directory. Enable mod ${modId} in the target world, reload the world, then spawn vehicle ${id} using the debug menu. Do not copy this JSON into save map files. Required mods: ${(modInfo.dependencies as string[]).join(', ')}. Missing versions/dependencies can prevent loading.\n\nBlueprints are lossy: review loss-report.json before importing. Export an editor project alongside it for complete instance preservation. Editor project files are NOT game-native vehicle blueprints.\n`;
   const files = { 'modinfo.json': JSON.stringify([modInfo], null, 2), 'vehicle.json': JSON.stringify([prototype], null, 2), 'loss-report.json': JSON.stringify({ gameValidated: false, losses }, null, 2), 'README.md': readme };
-  return { prototype, modInfo, losses, files, gameValidated: false };
+  return { prototype, modInfo, losses, files, modId, gameValidated: false };
 }
 export function exportBlueprintZip(vehicle: VehicleModel, options: BlueprintOptions, indexes: VehicleIndexes): Uint8Array {
   const out = exportBlueprint(vehicle, options, indexes); const folder = safeFilename(String(out.modInfo.id));
