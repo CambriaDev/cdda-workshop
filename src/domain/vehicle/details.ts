@@ -30,9 +30,9 @@ const HP_W = 745.6998715822702;
  * item_pocket.cpp:139-200,1379; itype.h:691; veh_interact.cpp:780.
  * No resolved definition, index, or input array is modified.
  */
-export function describePart(partId: string, indexes: VehicleIndexes): PartDetails {
+export function describePart(partId: string, indexes: VehicleIndexes, baseItemIdOverride?: string): PartDetails {
   const part = indexes.parts.get(partId);
-  const itemId = definitionFieldsReliable(part, ['item']) && typeof part?.item === 'string' ? part.item : null;
+  const itemId = baseItemIdOverride ?? (definitionFieldsReliable(part, ['item']) && typeof part?.item === 'string' ? part.item : null);
   const item = itemId ? indexes.items.get(itemId) : undefined;
   const reliableFlags = definitionFieldsReliable(part, ['flags']) && (part?.flags === undefined || (Array.isArray(part.flags) && part.flags.every(f => typeof f === 'string')));
   const result: PartDetails = { partId, baseItemId: itemId, sections: [], flags: reliableFlags ? [...flags(part)] : [], notes: [], qualities: [], pseudoTools: [], advanced: { part: part ?? null, baseItem: item ?? null } };
@@ -77,7 +77,7 @@ export function describePart(partId: string, indexes: VehicleIndexes): PartDetai
   }
   field(basic, 'durability', part, 'durability', 'part', { parse: integer, fallback: 0 });
   field(basic, 'folded_volume', part, 'folded_volume', 'part', { unit: 'ml', parse: quantity('ml') });
-  const relevantPower = !part || !reliableFlags || result.flags.some(f => ['ENGINE', 'ALTERNATOR', 'SOLAR_PANEL', 'WIND_TURBINE', 'WATER_WHEEL', 'REACTOR', 'ENABLED_DRAINS_EPOWER'].includes(f)) || ['power', 'epower', 'energy_consumption'].some(k => part[k] !== undefined);
+  const relevantPower = !part || !reliableFlags || !definitionFieldsReliable(part, ['power', 'epower', 'energy_consumption']) || result.flags.some(f => ['ENGINE', 'ALTERNATOR', 'SOLAR_PANEL', 'WIND_TURBINE', 'WATER_WHEEL', 'REACTOR', 'ENABLED_DRAINS_EPOWER'].includes(f)) || ['power', 'epower', 'energy_consumption'].some(k => part[k] !== undefined);
   const power = relevantPower ? section('power') : [];
   const split = (path: string, positiveId: string, negativeId: string, notes: string[]) => {
     const source = field([], path, part, path, 'part', { unit: 'W', parse: quantity('W', false), fallback: 0, notes });
@@ -112,7 +112,7 @@ export function describePart(partId: string, indexes: VehicleIndexes): PartDetai
       const suffix = pockets.length > 1 ? `_${i}` : '';
       const rowId = (id: string) => `${id}${suffix}`;
       if (!record(pocket)) { capacity.push({ id: rowId('container_capacity'), value: null, unit: 'ml', status: 'unknown', source: 'base_item', notes: ['unsupported_pocket'], reference }); continue; }
-      const restrictions = ['item_restriction', 'flag_restriction', 'material_restriction', 'holster', 'max_item_length', 'min_item_volume', 'max_item_volume'].some(k => pocket[k] !== undefined && pocket[k] !== false);
+      const restrictions = ['item_restriction', 'flag_restriction', 'material_restriction', 'holster', 'ablative', 'min_item_length', 'max_item_length', 'min_item_volume', 'max_item_volume'].some(k => pocket[k] !== undefined && pocket[k] !== false);
       const notes = ['nominal_capacity', ...(restrictions ? ['restricted_pocket'] : []), ...(pockets.length > 1 ? ['multiple_pockets'] : [])];
       const pocketNumber = (id: string, key: string, unit: string, parse: (v: unknown) => DetailPrimitive | undefined) => field(capacity, rowId(id), item, `pocket_data.${i}.${key}`, 'base_item', { unit, parse, notes, reference });
       if (!definitionFieldsReliable(item, [`pocket_data.${i}.pocket_type`, `pocket_data.${i}.ammo_restriction`])) {
