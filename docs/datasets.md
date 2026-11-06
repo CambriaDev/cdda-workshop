@@ -91,8 +91,10 @@ const result = compose(packages, enabledIds);
 - 显式类型白名单的顶层继承/替换；物品类型共享物品工厂命名空间。
 - vehicle 原型按 `veh_type.cpp:1287–1395` 对 parts/items/zones 三种向量追加父内容，保留输入顺序及重复项；仅在显式 copy-from 时继承。`generic_factory.h:338–350` 每条定义从新对象开始，因此同 ID、无 copy-from 的定义仍是全量替换；同 ID 显式 copy-from 自身才在原内容上追加。name 可继承/替换；blueprint 源码只读取后忽略。其他 vehicle 字段保留为 preview，并标记对应 `_incompleteFields`，不假装实现。真实 motorcycle 继承后为 9 个坐标组、21 个部件（含 engine_vtwin 和新增 kickstand），不是只有 1 个零件。
 - vehicle_part.requirements 按 `veh_type.cpp:175–216` 精确处理 install/removal/repair：未出现操作整体继承；已出现操作继承未指定 time、缺失或空 skills，但替换 using 或内联 components/qualities/tools，不深合并旧材料需求。真实 vehicle_part.frame 因此不再误标为不完整。
-- 对物品/vehicle_part 独立字段白名单实现标量 relative / proportional；relative 优先级参照 `src/assign.h`。
-- 显式单位表支持质量 mg/g/kg、体积 ml/L、长度 mm/cm/m、功率 W/kW、能量 J/kJ、价格 USD/cent，以及同维度复合单位。不会对任意带数字字符串进行猜测。
+- 对物品/vehicle_part 独立字段白名单实现标量 relative / proportional；vpart 的 `assign` 优先级 relative > proportional > direct。新适配的发动机／车轮／旋翼标量仅在对应旗标启用槽位读取时处理；物品 ENGINE/WHEEL 的 `optional` 则为 direct > proportional > relative。ITEM 子定义必须在原始条目重复声明 subtypes 才调用该槽位读取器，不能以继承后的 subtypes 伪造一次重读。已核实默认值、整数截断与范围；其他字段仍标记未知。
+- `tool_quality` 按通用工厂支持 copy-from，name 可继承；usages 是追加而非替换，空数组保留继承。工具能力名称保留 `tool_quality` gettext 上下文，例如 CUT 的中文“切割”。
+- vehicle_part 的 qualities／pseudo_tools 仅在非空数组时替换继承值，省略或空数组均继承；quality 同 ID 取最后值，伪工具按工具／热键对去重。非 ASCII 热键的原生首字节行为未适配，保守标记该字段不可靠。
+- 显式单位表支持质量 mg/g/kg、体积 ml/L、长度 mm/cm/m、功率 W/kW、能量 J/kJ、价格 USD/cent，以及同维度复合单位。不会对任意带数字字符串进行猜测。领域功率读取另严格遵照 `units.h:1124–1128` 的 mW/W/kW；裸整数沿用 `assign.cpp` 的 kW（不是 W），裸体积整数为 250 ml。数值小数、溢出或 MW/hp 等该版本未接受的功率单位不冒充有效源定义；显示马力由已知瓦特换算。
 - 物品/部件的指定集合字段支持 extend/delete，显式去重或删除，不把所有数组都视为同一种语义。
 - 炮塔按 `veh_type.cpp:473–635` 的实际 GUN/GUNMOD、禁用旗标过滤、`turret_` ID、基础物品/描述/颜色、液体/电池关联、外观、估算安装需求生成；不是只扫描静态 vehicle_part。
 - APPLIANCE 位置强制 structure；按 `veh_type.cpp:669–710` 提供 z_order/list_order。
@@ -108,7 +110,7 @@ const result = compose(packages, enabledIds);
 
 ## 本次实际提取与管理界面
 
-已实际运行提取，当前清单共发布 12 包、30,704 条有序原定义；核心 20,776 条（其中源码扫描统计为 10,102 条 ITEM，包含 abstract），不是演示数据。可选包定义数：Magiclysm 2,800、Aftershock 1,677、Mind Over Matter 1,310、Xedra Evolved 3,118、Bombastic Perks 173、DinoMod 326、No Hope 58、Disable NPC Needs 2、Portal Storms Ignore NPCs 2、Extra Mutated Scenarios 56、blazemod 406。具体部件/物品数量由组合解析后去除 abstract 得出，不等于定义条数。
+已实际运行提取，当前清单共发布 12 包、30,804 条有序原定义；核心 20,863 条（其中源码扫描统计为 10,102 条 ITEM，包含 abstract），不是演示数据。可选包定义数：Magiclysm 2,805、Aftershock 1,680、Mind Over Matter 1,312、Xedra Evolved 3,121、Bombastic Perks 173、DinoMod 326、No Hope 58、Disable NPC Needs 2、Portal Storms Ignore NPCs 2、Extra Mutated Scenarios 56、blazemod 406。具体部件/物品数量由组合解析后去除 abstract 得出，不等于定义条数。
 
 `parseGameColors` 读取已提取的实际 colordef RGB。`resolveGameColor` 支持基本游戏名、c_/h_/i_ 前缀及已知前景/背景组合；白色/黄色背景遵照 ncurses 非加粗色使用 GRAY/BROWN。Grid 只使用共享解析器生成的 z_order，不自行猜测位置层级，负 z_order 不画自己的字符。缺省部件颜色取 `veh_type.h:382–383` 的 light_gray。终端 blink 动画、用户自定义配色映射、完整车辆装甲覆色/旋转朝向显示尚未复现，不宣称是游戏终端的逐像素截图。
 

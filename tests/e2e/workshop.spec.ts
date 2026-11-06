@@ -45,6 +45,10 @@ test('full offline preparation survives page close, reload, locale change and ex
   const reopened = await context.newPage(); await reopened.goto('/');
   await expect(reopened.getByRole('button', { name: '安装到当前格' })).toBeEnabled();
   await expect(reopened.getByText('离线资源已校验并就绪', { exact: true })).toBeVisible();
+  await reopened.getByRole('textbox', { name: '搜索部件' }).fill('alternator_car');
+  await reopened.locator('.part-row').filter({ has: reopened.locator('small', { hasText: /^alternator_car$/ }) }).click();
+  await expect(reopened.getByTestId('library-part-details').locator('[data-detail="generation"]')).toContainText('780 W');
+  await expect(reopened.getByTestId('library-part-details').locator('[data-detail="mechanical_load"]')).toContainText('1.492 kW');
   await reopened.getByRole('textbox', { name: '搜索部件' }).fill('frame');
   await reopened.locator('.part-row').filter({ has: reopened.locator('small', { hasText: /^frame$/ }) }).click();
   await reopened.getByRole('button', { name: '安装到当前格' }).click();
@@ -72,12 +76,63 @@ test('full offline preparation survives page close, reload, locale change and ex
   await context.setOffline(false);
 });
 
+test('part details distinguish rated power, storage, tool qualities and installed state in both languages', async ({ page }) => {
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: '安装到当前格' })).toBeEnabled();
+  const details = page.getByTestId('library-part-details');
+  async function choose(id: string) {
+    await page.getByRole('textbox', { name: /搜索部件|Search parts/ }).fill(id);
+    await page.locator('.part-row').filter({ has: page.locator('small', { hasText: new RegExp(`^${id}$`) }) }).click();
+  }
+  await choose('alternator_car');
+  await expect(details.locator('[data-detail="generation"]')).toContainText('780 W');
+  await expect(details.locator('[data-detail="mechanical_load"]')).toContainText('1.492 kW');
+  await expect(details.locator('[data-detail="mechanical_load_hp"]')).toContainText('2.001 hp');
+  await expect(details).toContainText('额定发电功率');
+  await choose('engine_electric_small');
+  await expect(details.locator('[data-detail="mechanical_output"]')).toContainText('7.04 kW');
+  await expect(details.locator('[data-detail="full_load_consumption"]')).toContainText('8 kW');
+  await expect(details).toContainText('满载耗电');
+  await choose('crane_tiny');
+  await expect(details.locator('[data-quality="JACK"]').first()).toContainText('1级');
+  await expect(details.locator('[data-quality="JACK"]').first()).toContainText('500 kg');
+  await expect(details.locator('[data-quality="LIFT"]').first()).toContainText('1级');
+  // Both definitions and catalog metadata are shipped, not inferred from character skills.
+  await expect(details.locator('[data-quality="JACK"]').first()).not.toContainText('Unknown');
+  await page.getByRole('button', { name: '简体中文', exact: true }).click();
+  await expect(details).toContainText('Tool qualities & levels');
+  await expect(details.locator('[data-quality="JACK"]').first()).toContainText('Level 1');
+  await choose('tank');
+  await expect(details.locator('[data-detail^="container_capacity"]').first()).toContainText('60 L');
+  await expect(details.locator('[data-detail="cargo_capacity"]')).toHaveCount(0);
+  await choose('frame');
+  await page.getByRole('button', { name: 'Install on selected tile', exact: true }).click();
+  const installed = page.getByTestId('installed-part-details');
+  await expect(installed.locator('code').first()).toHaveText('frame');
+  await expect(page.getByRole('region', { name: 'Recorded instance state', exact: true })).toContainText('Not recorded');
+  await choose('alternator_car');
+  await expect(details.locator('code').first()).toHaveText('alternator_car');
+  await expect(installed.locator('code').first()).toHaveText('frame');
+  await details.getByText('Advanced data & sources', { exact: true }).click();
+  await expect(details.locator('pre').first()).toContainText('vehicle_part');
+  await details.locator('[data-detail="generation"]').scrollIntoViewIfNeeded();
+  await expect(details.locator('[data-detail="generation"]')).toBeInViewport();
+  await page.screenshot({ path: 'tests/artifacts/part-details-en.png', fullPage: true });
+  expect(errors).toEqual([]);
+});
+
 test('narrow viewport keeps the editor and primary controls usable', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   await expect(page.getByRole('button', { name: '安装到当前格' })).toBeEnabled();
   await page.getByRole('button', { name: '简体中文', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Install on selected tile', exact: true })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Search parts' }).fill('crane_tiny');
+  await page.locator('.part-row').filter({ has: page.locator('small', { hasText: /^crane_tiny$/ }) }).click();
+  const details = page.getByTestId('library-part-details');
+  await expect(details.locator('[data-quality="JACK"]').first()).toContainText('500 kg');
+  await details.getByText('Advanced data & sources', { exact: true }).click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391);
   await page.screenshot({ path: 'tests/artifacts/workshop-mobile.png', fullPage: true });
 });

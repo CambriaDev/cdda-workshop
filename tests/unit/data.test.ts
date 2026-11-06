@@ -67,6 +67,84 @@ describe('ordered typed dataset composition', () => {
     expect(result.vehicles.fresh._incompleteFields).toEqual(['custom_rule']);
     expect(parent.parts).toHaveLength(1);
   });
+  it('inherits tool-quality names and appends usages rather than replacing them', () => {
+    const base = { type: 'tool_quality', abstract: 'quality-base', name: { str: 'cutting', ctxt: 'tool_quality' }, usages: [[1, ['salvage']]] };
+    const result = compose([pkg('dda', [base,
+      { type: 'tool_quality', id: 'CUT', 'copy-from': 'quality-base', usages: [[2, ['inscribe']]] },
+      { type: 'tool_quality', id: 'CUT', 'copy-from': 'CUT', usages: [] },
+      { type: 'tool_quality', id: 'fresh', 'copy-from': 'quality-base' },
+      { type: 'tool_quality', id: 'fresh', name: 'replacement' },
+      { type: 'tool_quality', id: 'unsupported', 'copy-from': 'CUT', extend: { usages: [[3, ['other']]] } }
+    ])], ['dda']);
+    expect(result.byType.tool_quality.CUT.name).toEqual(base.name);
+    expect(result.byType.tool_quality.CUT.usages).toEqual([[1, ['salvage']], [2, ['inscribe']]]);
+    expect(result.byType.tool_quality.CUT._incomplete).toBe(false);
+    expect(result.byType.tool_quality.fresh.name).toBe('replacement'); expect(result.byType.tool_quality.fresh.usages).toBeUndefined();
+    expect(result.byType.tool_quality.unsupported._incompleteFields).toEqual(['usages']);
+    expect(base.usages).toEqual([[1, ['salvage']]]);
+  });
+  it('replaces non-empty vpart quality/tool containers but inherits empty containers', () => {
+    const base = { type: 'vehicle_part', abstract: 'base', qualities: [['CUT', 1]], pseudo_tools: [{ id: 'welder', hotkey: 'w' }] };
+    const result = compose([pkg('dda', [base,
+      { type: 'vehicle_part', id: 'empty', 'copy-from': 'base', qualities: [], pseudo_tools: [] },
+      { type: 'vehicle_part', id: 'replace', 'copy-from': 'base', qualities: [['JACK', 2], ['JACK', 4]], pseudo_tools: [{ id: 'soldering_iron' }, { id: 'soldering_iron', hotkey: '' }, { id: 'soldering_iron', hotkey: 'ss' }] },
+      { type: 'vehicle_part', id: 'unsupported', 'copy-from': 'base', extend: { qualities: [['JACK', 2]] }, delete: { pseudo_tools: [{ id: 'welder' }] } },
+      { type: 'vehicle_part', id: 'malformed', 'copy-from': 'base', qualities: [['CUT', 'high']], pseudo_tools: [{ hotkey: 'w' }] },
+      { type: 'vehicle_part', id: 'fixed', 'copy-from': 'malformed', qualities: [['CUT', 2]], pseudo_tools: [{ id: 'welder' }] }
+    ])], ['dda']);
+    expect(result.parts.empty.qualities).toEqual(base.qualities); expect(result.parts.empty.pseudo_tools).toEqual(base.pseudo_tools);
+    expect(result.parts.replace.qualities).toEqual([['JACK', 4]]);
+    expect(result.parts.replace.pseudo_tools).toEqual([{ id: 'soldering_iron' }, { id: 'soldering_iron', hotkey: 's' }]);
+    expect(result.parts.replace._incomplete).toBe(false);
+    expect(result.parts.unsupported._incompleteFields).toEqual(['qualities', 'pseudo_tools']);
+    expect(result.parts.malformed._incompleteFields).toEqual(['qualities', 'pseudo_tools']);
+    expect(result.parts.fixed._incompleteFields).toEqual([]);
+    expect(base.pseudo_tools).toEqual([{ id: 'welder', hotkey: 'w' }]);
+  });
+  it('applies source-backed vpart slot scalar precedence, defaults and integer truncation', () => {
+    const result = compose([pkg('dda', [
+      { type: 'vehicle_part', abstract: 'engine', flags: ['ENGINE'], noise_factor: 5, m2c: 100, backfire_freq: 3 },
+      { type: 'vehicle_part', id: 'engine-child', 'copy-from': 'engine', noise_factor: 999, relative: { noise_factor: 2, backfire_threshold: .25 }, proportional: { noise_factor: 3, m2c: 1.25, backfire_freq: 1.5 } },
+      { type: 'vehicle_part', abstract: 'wheel', flags: ['WHEEL'], rolling_resistance: 1.25 },
+      { type: 'vehicle_part', id: 'wheel-child', 'copy-from': 'wheel', relative: { rolling_resistance: .5, contact_area: 2 }, proportional: { wheel_offroad_rating: 1.5 } },
+      { type: 'vehicle_part', id: 'rotor', flags: ['ROTOR'], relative: { rotor_diameter: 2 } },
+      { type: 'vehicle_part', id: 'flag-extended', extend: { flags: ['WHEEL'] }, relative: { contact_area: 2 } }
+    ])], ['dda']);
+    expect(result.parts['engine-child']).toMatchObject({ noise_factor: 7, m2c: 125, backfire_freq: 4, backfire_threshold: .25, _incomplete: false });
+    expect(result.parts['wheel-child']).toMatchObject({ rolling_resistance: 1.75, contact_area: 3, wheel_offroad_rating: .75, _incomplete: false });
+    expect(result.parts.rotor.rotor_diameter).toBe(3);
+    expect(result.parts['flag-extended'].contact_area).toBe(3);
+  });
+  it('uses optional-reader precedence for item wheel/engine scalar slots', () => {
+    const result = compose([pkg('dda', [
+      { type: 'ITEM', abstract: 'wheel', subtypes: ['WHEEL'], diameter: 5, width: 3 },
+      { type: 'ITEM', id: 'wheel-child', 'copy-from': 'wheel', subtypes: ['WHEEL'], diameter: 20, relative: { diameter: 2, width: 4 }, proportional: { diameter: 3, width: 1.5 } },
+      { type: 'ITEM', id: 'not-reloaded', 'copy-from': 'wheel', relative: { diameter: 2 } },
+      { type: 'ITEM', id: 'engine', subtypes: ['ENGINE'], relative: { displacement: 200 } }
+    ])], ['dda']);
+    expect(result.items['wheel-child']).toMatchObject({ diameter: 20, width: 4, _incomplete: false });
+    expect(result.items.engine.displacement).toBe(200);
+    expect(result.items['not-reloaded'].diameter).toBe(5);
+    expect(result.items['not-reloaded']._incompleteFields).toEqual(['diameter']);
+  });
+  it('marks unsupported, inactive, malformed and out-of-range scalar fields precisely', () => {
+    const result = compose([pkg('dda', [
+      { type: 'vehicle_part', id: 'inactive', relative: { contact_area: 1 } },
+      { type: 'ITEM', id: 'not-wheel', relative: { diameter: 1 } },
+      { type: 'vehicle_part', abstract: 'large-wheel', flags: ['WHEEL'], contact_area: 2147483647 },
+      { type: 'vehicle_part', id: 'invalid', 'copy-from': 'large-wheel', flags: ['ENGINE', 'WHEEL'], noise_factor: 10, proportional: { noise_factor: -1 }, relative: { contact_area: 1, m2c: .5 }, extend: { rolling_resistance: [2] } },
+      { type: 'vehicle_part', id: 'nested', flags: ['ENGINE'], proportional: { noise_factor: { value: 2 } } },
+      { type: 'vehicle_part', id: 'reset', 'copy-from': 'nested', noise_factor: 20 },
+      { type: 'vehicle_part', id: 'reset-invalid', 'copy-from': 'nested', noise_factor: 20, extend: { noise_factor: [2] } }
+    ])], ['dda']);
+    expect(result.parts.inactive._incompleteFields).toEqual(['contact_area']); expect(result.items['not-wheel']._incompleteFields).toEqual(['diameter']);
+    expect(result.parts.invalid.noise_factor).toBeUndefined(); // invalid assign must not substitute the direct value
+    expect(result.parts.invalid._incompleteFields).toEqual(expect.arrayContaining(['noise_factor', 'contact_area', 'm2c', 'rolling_resistance']));
+    expect(result.parts.invalid._incompleteFields).not.toContain('*');
+    expect(result.parts.nested._incompleteFields).toEqual(['noise_factor']);
+    expect(result.parts.reset).toMatchObject({ noise_factor: 20, _incomplete: false });
+    expect(result.parts['reset-invalid']._incompleteFields).toEqual(['noise_factor']);
+  });
   it('parses explicit units and includes package order/content in cache keys', () => {
     expect(quantity('2 kg 500 g')).toEqual({ value: 2500, dimension: 'mass' }); expect(quantity('2 imaginary')).toBeUndefined();
     const packages = [{ ...pkg('a', []), hash: 'one' }, { ...pkg('b', []), hash: 'two' }];
@@ -136,5 +214,8 @@ describe('real extracted release', () => {
     expect(motorcycle._incomplete).toBe(false);
     const catalog = JSON.parse(readFileSync(path.join(base, core.translationFile!), 'utf8'));
     expect(catalog.messages.length).toBeGreaterThan(10000); expect(catalog.messages.some((m: { context?: string }) => m.context)).toBe(true);
+    expect(result.byType.tool_quality.CUT.name).toEqual({ ctxt: 'tool_quality', str: 'cutting' });
+    expect(result.byType.tool_quality.CUT._incomplete).toBe(false);
+    expect(translationText(result.byType.tool_quality.CUT.name, catalog)).toBe('切割');
   });
 });

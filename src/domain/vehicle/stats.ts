@@ -1,12 +1,15 @@
 import { definitionFieldsReliable, flags, issue, record, type Definition, type ItemInstance, type Issue, type Metric, type VehicleIndexes, type VehicleModel } from './types';
-const unitTables: Record<string, Record<string, number>> = { g: { mg: .001, g: 1, kg: 1000 }, ml: { ml: 1, L: 1000, l: 1000 }, W: { W: 1, kW: 1000, MW: 1e6, hp: 745.6998715822702 } };
-/** Numeric weight/volume use the game's legacy g / 250ml units; numeric power is watts. */
+const unitTables: Record<string, Record<string, number>> = { g: { mg: .001, g: 1, kg: 1000 }, ml: { ml: 1, L: 1000, l: 1000 }, W: { mW: .001, W: 1, kW: 1000 } };
+/** Legacy assign units: weight g, volume 250 ml, integer power kW (assign.cpp:371–386). */
 export function parseQuantity(value: unknown, unit: 'g' | 'ml' | 'W'): number | undefined {
-  if (typeof value === 'number' && Number.isFinite(value)) return value * (unit === 'ml' ? 250 : 1);
+  if (typeof value === 'number') {
+    const converted = value * (unit === 'W' ? 1000 : unit === 'ml' ? 250 : 1);
+    return Number.isSafeInteger(value) && Number.isSafeInteger(converted) ? converted : undefined;
+  }
   if (typeof value !== 'string') return undefined;
-  let sum = 0, end = 0; const re = /([+-]?\d+(?:\.\d+)?)\s*(mg|kg|g|ml|mL|L|l|MW|kW|W|hp)/g; let m: RegExpExecArray | null;
+  let sum = 0, end = 0; const re = /([+-]?\d+(?:\.\d+)?)\s*(mg|kg|g|ml|mL|L|l|mW|kW|W)/g; let m: RegExpExecArray | null;
   while ((m = re.exec(value))) { if (value.slice(end, m.index).trim()) return undefined; const factor = unitTables[unit]?.[m[2] === 'mL' ? 'ml' : m[2]!]; if (factor === undefined) return undefined; sum += Number(m[1]) * factor; end = re.lastIndex; }
-  return end && !value.slice(end).trim() ? sum : undefined;
+  return end && !value.slice(end).trim() && Number.isFinite(sum) ? sum : undefined;
 }
 const metric = (unit: string): Metric => ({ known: 0, missing: 0, complete: true, unit });
 const add = (m: Metric, n: number | undefined) => { if (n === undefined) { m.missing++; m.complete = false; } else m.known += n; };

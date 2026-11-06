@@ -1,6 +1,6 @@
 import type { Composition, DataPackage, Definition, Diagnostic, JsonRecord, ResolvedDefinition } from './types';
 export const ITEM_TYPES = new Set(['ITEM', 'GENERIC', 'AMMO', 'ARMOR', 'BOOK', 'COMESTIBLE', 'ENGINE', 'GUN', 'GUNMOD', 'MAGAZINE', 'TOOL', 'TOOL_ARMOR', 'BIONIC_ITEM', 'PET_ARMOR', 'WHEEL', 'BATTERY']);
-const COPY_TYPES = new Set([...ITEM_TYPES, 'vehicle_part', 'vehicle', 'mutation', 'skill', 'proficiency', 'bionic', 'effect_type', 'body_part', 'profession', 'scenario', 'martial_art', 'SPELL', 'item_category', 'ITEM_CATEGORY', 'AMMO_TYPE', 'ammunition_type', 'json_flag', 'material']);
+const COPY_TYPES = new Set([...ITEM_TYPES, 'vehicle_part', 'vehicle', 'mutation', 'skill', 'proficiency', 'bionic', 'effect_type', 'body_part', 'profession', 'scenario', 'martial_art', 'SPELL', 'item_category', 'ITEM_CATEGORY', 'AMMO_TYPE', 'ammunition_type', 'json_flag', 'material', 'tool_quality']);
 const ITEM_NUMBERS = new Set(['weight', 'volume', 'integral_weight', 'integral_volume', 'price', 'price_postapoc', 'longest_side', 'stack_size', 'charges', 'count', 'capacity', 'reload', 'recoil', 'dispersion', 'sight_dispersion', 'durability', 'loudness', 'barrel_length', 'handling', 'ammo_to_fire', 'energy_drain', 'to_hit']);
 const PART_NUMBERS = new Set(['durability', 'damage_modifier', 'energy_consumption', 'power', 'epower', 'folded_volume', 'size', 'bonus', 'cargo_weight_modifier', 'comfort', 'floor_bedding_warmth', 'bonus_fire_warmth_feet']);
 const ITEM_SETS = new Set(['flags', 'qualities', 'techniques', 'faults', 'effects', 'ammo', 'materials', 'material']);
@@ -50,6 +50,73 @@ function partRequirements(parent: unknown, raw: JsonRecord, unsupported: (messag
   }
   return result;
 }
+// Source-reviewed scalar slots only: veh_type.cpp:384–420 / veh_type.h:124–149;
+// item_factory.cpp:2995–3004 / itype.h:677–695. Do not recursively merge slots.
+type ScalarRule = { flag: string; initial: number; integer?: boolean };
+const PART_DETAIL_SCALARS: Record<string, ScalarRule> = {
+  backfire_threshold: { flag: 'ENGINE', initial: 0 }, backfire_freq: { flag: 'ENGINE', initial: 1, integer: true },
+  noise_factor: { flag: 'ENGINE', initial: 0, integer: true }, damaged_power_factor: { flag: 'ENGINE', initial: 0 },
+  m2c: { flag: 'ENGINE', initial: 100, integer: true }, muscle_power_factor: { flag: 'ENGINE', initial: 0, integer: true },
+  rolling_resistance: { flag: 'WHEEL', initial: 1 }, contact_area: { flag: 'WHEEL', initial: 1, integer: true },
+  wheel_offroad_rating: { flag: 'WHEEL', initial: .5 }, rotor_diameter: { flag: 'ROTOR', initial: 1, integer: true },
+};
+const ITEM_DETAIL_SCALARS: Record<string, ScalarRule> = {
+  displacement: { flag: 'ENGINE', initial: 0, integer: true },
+  diameter: { flag: 'WHEEL', initial: 0, integer: true }, width: { flag: 'WHEEL', initial: 0, integer: true },
+};
+const detailScalars = (type: string) => type === 'vehicle_part' ? PART_DETAIL_SCALARS : ITEM_TYPES.has(type) ? ITEM_DETAIL_SCALARS : {};
+function applyDetailScalars(out: ResolvedDefinition, raw: JsonRecord, type: string, incomplete: Set<string>, unsupported: (message: string, field: string) => void) {
+  const part = type === 'vehicle_part';
+  // ITEM subtypes are a LOCAL vector each load (item_factory.cpp:2930–2943).
+  // Inheritance retains an existing slot but does not invoke its reader again.
+  const flags = part ? out.flags : raw.subtypes;
+  for (const [field, rule] of Object.entries(detailScalars(type))) {
+    const direct = field in raw;
+    const relative = isRecord(raw.relative) && field in raw.relative;
+    const proportional = isRecord(raw.proportional) && field in raw.proportional;
+    if (!direct && !relative && !proportional) continue;
+    if (!Array.isArray(flags) || !flags.includes(rule.flag) || incomplete.has(part ? 'flags' : 'subtypes')) {
+      if (direct) out[field] = clone(raw[field]);
+      unsupported(`Cannot apply ${type}.${field} without a verified ${rule.flag} slot; source ignores inactive slot fields.`, field); continue;
+    }
+    // assign() uses relative > proportional > direct; optional() uses the reverse
+    // reader order direct > proportional > relative (generic_factory.h:869–877).
+    const mode = part ? relative ? 'relative' : proportional ? 'proportional' : 'direct' : direct ? 'direct' : proportional ? 'proportional' : 'relative';
+    const operand = mode === 'direct' ? raw[field] : (raw[mode] as JsonRecord)[field];
+    const base = out[field] ?? rule.initial;
+    let result: unknown;
+    if (typeof operand === 'number' && Number.isFinite(operand)) {
+      if (mode === 'direct') result = operand;
+      else if (typeof base === 'number' && Number.isFinite(base)) {
+        if (mode === 'relative' && (!rule.integer || Number.isInteger(operand))) result = base + operand;
+        if (mode === 'proportional' && operand > 0 && operand !== 1) result = rule.integer ? Math.trunc(base * operand) : base * operand;
+      }
+    }
+    if (typeof result !== 'number' || !Number.isFinite(result) || (rule.integer ? !Number.isInteger(result) || result < -2147483648 || result > 2147483647 : Math.abs(result) > 3.4028234663852886e38)) {
+      if (mode === 'direct') out[field] = clone(raw[field]);
+      unsupported(`Invalid or unsupported ${mode} ${type}.${field}; expected an in-range ${rule.integer ? 'integer' : 'number'} and a positive proportional factor other than 1.`, field); continue;
+    }
+    out[field] = result;
+    if (mode === 'direct' && !(['extend', 'delete'] as const).some(operation => isRecord(raw[operation]) && field in raw[operation])) incomplete.delete(field);
+  }
+}
+// veh_type.cpp:353–373 clears these containers ONLY for non-empty input arrays.
+function partTools(field: 'qualities' | 'pseudo_tools', value: unknown): unknown[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const entries = new Map<string, unknown>();
+  for (const entry of value) {
+    if (field === 'qualities') {
+      if (!Array.isArray(entry) || typeof entry[0] !== 'string' || !Number.isInteger(entry[1])) return undefined;
+      entries.set(entry[0], [entry[0], entry[1]]); // source map: last occurrence wins
+    } else {
+      if (!isRecord(entry) || typeof entry.id !== 'string' || (entry.hotkey !== undefined && typeof entry.hotkey !== 'string')) return undefined;
+      const hotkey = typeof entry.hotkey === 'string' ? entry.hotkey.slice(0, 1) : '';
+      if (hotkey && hotkey.charCodeAt(0) > 127) return undefined; // native first-byte semantics need a separate adapter
+      entries.set(JSON.stringify([entry.id, hotkey]), hotkey ? { id: entry.id, hotkey } : { id: entry.id });
+    }
+  }
+  return [...entries.values()];
+}
 export function compose(packages: DataPackage[], enabledIds: string[]): Composition {
   const diagnostics: Diagnostic[] = []; const byType: Composition['byType'] = Object.create(null); const allItems: Record<string, ResolvedDefinition> = Object.create(null);
   const available = new Map(packages.map(p => [p.id, p])); const ordered = [...new Set(available.has('dda') ? ['dda', ...enabledIds] : enabledIds)];
@@ -86,6 +153,23 @@ export function compose(packages: DataPackage[], enabledIds: string[]): Composit
             unsupported(`Unsupported vehicle.${key}; field retained as preview, not engine-applied`, key); out[key] = clone(value); continue;
           }
         }
+        if (Object.hasOwn(detailScalars(type), key)) continue; // evaluated after flags/set operations, in source reader order
+        if (type === 'vehicle_part' && (key === 'qualities' || key === 'pseudo_tools')) {
+          const normalized = partTools(key, value);
+          if (!normalized) { unsupported(`Malformed vehicle_part.${key}; retained as preview.`, key); out[key] = clone(value); }
+          else if (normalized.length) { out[key] = normalized; incompleteFields.delete(key); }
+          else if (out[key] === undefined) out[key] = [];
+          continue;
+        }
+        if (type === 'tool_quality') {
+          // requirements.cpp:115–124 uses generic_factory inheritance, but emplaces usages.
+          if (key === 'usages') {
+            if (Array.isArray(value) && value.every(v => Array.isArray(v) && Number.isInteger(v[0]) && Array.isArray(v[1]) && v[1].every(line => typeof line === 'string')) && (out[key] === undefined || Array.isArray(out[key]))) out[key] = [...clone((out[key] ?? []) as unknown[]), ...clone(value)];
+            else { unsupported('Malformed tool_quality.usages; retained as preview.', key); out[key] = clone(value); }
+            continue;
+          }
+          if (!['id', 'type', 'name'].includes(key) && !key.startsWith('//')) unsupported(`Unsupported tool_quality.${key}; field retained as preview.`, key);
+        }
         const numericKeys = type === 'vehicle_part' ? PART_NUMBERS : ITEM_TYPES.has(type) ? ITEM_NUMBERS : new Set<string>();
         if (numericKeys.has(key) && ((isRecord(raw.relative) && key in raw.relative) || (isRecord(raw.proportional) && key in raw.proportional))) continue;
         if (type === 'vehicle_part' && key === 'requirements' && isRecord(value)) {
@@ -100,6 +184,7 @@ export function compose(packages: DataPackage[], enabledIds: string[]): Composit
       for (const mode of ['relative', 'proportional', 'extend', 'delete'] as const) {
         const operations = raw[mode]; if (!isRecord(operations)) continue;
         for (const [key, operand] of Object.entries(operations)) {
+          if ((mode === 'relative' || mode === 'proportional') && Object.hasOwn(detailScalars(type), key)) continue;
           if (mode === 'proportional' && isRecord(raw.relative) && key in raw.relative) continue; // assign.h: relative takes precedence
           const numeric = type === 'vehicle_part' ? PART_NUMBERS : ITEM_TYPES.has(type) ? ITEM_NUMBERS : new Set<string>();
           const sets = type === 'vehicle_part' ? PART_SETS : ITEM_TYPES.has(type) ? ITEM_SETS : new Set<string>();
@@ -112,6 +197,7 @@ export function compose(packages: DataPackage[], enabledIds: string[]): Composit
           } else unsupported(`Unsupported ${mode} operation ${type}.${key}; operation retained in original definitions, not applied.`, key);
         }
       }
+      applyDetailScalars(out, raw, type, incompleteFields, unsupported);
       out.id = id; out.type = type; out._source = d.source; out._package = pkg; out._abstract = typeof raw.abstract === 'string'; out._incomplete = incompleteFields.size > 0; out._incompleteFields = [...incompleteFields];
       // Neither a child nor an override inherits the parent's abstract identity.
       delete out.abstract; target[id] = out; (byType[type] ??= Object.create(null))[id] = out;

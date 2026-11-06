@@ -33,7 +33,7 @@ async function commitHash(): Promise<string> {
 const commit = await commitHash();
 if (commit !== '7b2efa5cea38e4d4d97dd0e63b28b9148623da59') throw new Error(`Source is ${commit}; this adapter requires tested 0.I-1 commit 7b2efa5.`);
 const gameVersion = '0.I-1';
-const selected = new Set([...ITEM_TYPES, 'vehicle_part', 'vehicle', 'vehicle_part_migration', 'MIGRATION', 'item_category', 'ITEM_CATEGORY', 'item_group', 'AMMO_TYPE', 'ammunition_type', 'json_flag', 'material', 'skill', 'proficiency', 'mutation', 'mutation_category', 'mutation_type', 'effect_type', 'body_part', 'sub_body_part', 'bionic', 'SPELL', 'martial_art', 'profession', 'scenario', 'EXTERNAL_OPTION', 'MOD_INFO', 'requirement', 'fault', 'enchantment']);
+const selected = new Set([...ITEM_TYPES, 'vehicle_part', 'vehicle', 'vehicle_part_migration', 'MIGRATION', 'item_category', 'ITEM_CATEGORY', 'item_group', 'AMMO_TYPE', 'ammunition_type', 'json_flag', 'material', 'skill', 'proficiency', 'mutation', 'mutation_category', 'mutation_type', 'effect_type', 'body_part', 'sub_body_part', 'bionic', 'SPELL', 'martial_art', 'profession', 'scenario', 'EXTERNAL_OPTION', 'MOD_INFO', 'requirement', 'tool_quality', 'fault', 'enchantment']);
 const diagnostics: Diagnostic[] = [];
 type Mod = { directory: string; info: JsonRecord; origin: 'builtin' | 'external' };
 async function modsAt(directory: string, origin: Mod['origin']): Promise<Mod[]> {

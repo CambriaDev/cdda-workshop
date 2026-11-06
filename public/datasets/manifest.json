@@ -14,8 +14,8 @@
       "license": "CC-BY-SA-3.0",
       "reasons": [],
       "file": "0.I-1/dda.json",
-      "hash": "39584c2a6faae359e04dcf8d38cfbc292e637aa122818a1eaf212e34fedcad8b",
-      "definitionCount": 20776,
+      "hash": "a3908eac1d759e9bc9e85df03dca67b97310a597456c0da9a89f92b87df2e629",
+      "definitionCount": 20863,
       "obsolete": false,
       "conflicts": [],
       "scannedFiles": 3014,
@@ -161,7 +161,7 @@
         "MOD_INFO": 1
       },
       "translationFile": "0.I-1/dda.zh_CN.json",
-      "translationHash": "9d7cafa6bc51585cf2964ea4a0419c9846612785b65a957f99e87c9267824852"
+      "translationHash": "655f39b89f1f67c0991de983aabc46da363e0215a3e6d8b330e6c02780086906"
     },
     {
       "id": "magiclysm",
@@ -174,8 +174,8 @@
       "license": "CC-BY-SA-3.0",
       "reasons": [],
       "file": "0.I-1/magiclysm.json",
-      "hash": "1a6c90b887bcbd0ef914be57b850715e8a66f8a474d280d53485e676c786cb81",
-      "definitionCount": 2800,
+      "hash": "42777181acaf9fbda74dd27261d91c18cb69b69ee2ce313a70e4bf6a50f253ee",
+      "definitionCount": 2805,
       "obsolete": false,
       "authors": [
         "KorGgenT",
@@ -269,7 +269,7 @@
         "region_overlay": 1
       },
       "translationFile": "0.I-1/magiclysm.zh_CN.json",
-      "translationHash": "fc60aafc6796e65f439003f6073b42df09610abcf0d53aae59998e88eb92cb71"
+      "translationHash": "5d4e209c1e3d67509225934dd243c56bf488a5550e67e9567c253f0e70de9260"
     },
     {
       "id": "aftershock",
@@ -284,8 +284,8 @@
         "Source declares this mod obsolete; not certified compatible."
       ],
       "file": "0.I-1/aftershock.json",
-      "hash": "c1120f29c9f2c6113639793f30316236d2d14dd4a8a2d99bbbd5ef4333ddb912",
-      "definitionCount": 1677,
+      "hash": "0fb74ae718f25a78851bd40cf014c0c5a30e3dc08e8a0ffce3ec3eea98fbf29b",
+      "definitionCount": 1680,
       "obsolete": true,
       "authors": [
         "Esther",
@@ -381,7 +381,7 @@
         "vitamin": 3
       },
       "translationFile": "0.I-1/aftershock.zh_CN.json",
-      "translationHash": "474a1f7997fba2d86a97bbdc1fa02c733df8156e0acc541fbd0bcd2a217c51d7"
+      "translationHash": "301b2246556b09f58d80c2829b3413e2ce69114d8ae5f09bd565b426ca250b08"
     },
     {
       "id": "mindovermatter",
@@ -394,8 +394,8 @@
       "license": "CC-BY-SA-3.0",
       "reasons": [],
       "file": "0.I-1/mindovermatter.json",
-      "hash": "06b8a3ff083391900462830b366ff55d618b66b94e87f691fb85f7e061a997fa",
-      "definitionCount": 1310,
+      "hash": "eead9589d68aa99c475defc0a4c7dbce3f32a6a7152ca2257588abad37d759db",
+      "definitionCount": 1312,
       "obsolete": false,
       "authors": [
         "StandingStorm"
@@ -478,7 +478,7 @@
         "vitamin": 4
       },
       "translationFile": "0.I-1/mindovermatter.zh_CN.json",
-      "translationHash": "dce64eba09b5da45b037bffe4e936cdb76ec0490e9282aefc375553947fbfec4"
+      "translationHash": "b9fcfd18d9f5103f569a18d5642c453fb94f04289374f485010e34a04f5a9373"
     },
     {
       "id": "xedra_evolved",
@@ -491,8 +491,8 @@
       "license": "CC-BY-SA-3.0",
       "reasons": [],
       "file": "0.I-1/xedra_evolved.json",
-      "hash": "0254f11bba9649869aaf8cfd48733a88cc3507cf53eff77574d10c2b2c6452ea",
-      "definitionCount": 3118,
+      "hash": "55817c8f80f4aa9b00796c218eadff3a2045922576e54c4861522c7d8a964ebf",
+      "definitionCount": 3121,
       "obsolete": false,
       "authors": [
         "Maleclypse",
@@ -590,7 +590,7 @@
         "weather_type": 8
       },
       "translationFile": "0.I-1/xedra_evolved.zh_CN.json",
-      "translationHash": "03dc88bd7b6beea819afa015c8479d1eb1569246989af3e5cff70e75000d467c"
+      "translationHash": "ad7a2f2bc1d7c3dcc0eeafb4fbc3cf7e19e180ef77ed6fce3bc82c7b55a23416"
     },
     {
       "id": "bombastic_perks",
@@ -2315,5 +2315,5 @@
   "definitionOrder": "Source directory recursive lexical order; array order preserved. Compose in user enabled order; unresolved parents retried after all definitions.",
   "scope": "Static editor/display subset; not engine validation. No maps, tiles, private saves, or unlicensed external originals.",
   "externalDirectoriesScanned": 28,
-  "coreDefinitionCount": 20776
+  "coreDefinitionCount": 20863
 }

@@ -4,7 +4,7 @@ export interface Definition { id: string; type: string; [key: string]: unknown }
 export interface ItemInstance { typeid?: string; charges?: number; damaged?: number; degradation?: number; faults?: unknown[]; [key: string]: unknown }
 export interface VehiclePart { id: string; mount_dx: number; mount_dy: number; variant?: string; base?: ItemInstance; items?: ItemInstance[]; tools?: ItemInstance[]; [key: string]: unknown }
 export interface VehicleModel { name: string; parts: VehiclePart[]; [key: string]: unknown }
-export interface VehicleIndexes { parts: Map<string, Definition>; items: Map<string, Definition>; flagRequirements?: Map<string, string> }
+export interface VehicleIndexes { parts: Map<string, Definition>; items: Map<string, Definition>; flagRequirements?: Map<string, string>; toolQualities?: Map<string, Definition> }
 export interface Issue { code: string; severity: 'warning' | 'error'; message: string; partIndex?: number; path?: string }
 export interface EditResult { vehicle: VehicleModel; issues: Issue[]; ok: boolean }
 export interface ProjectMetadata { datasetId?: string; gameVersion?: string; saveVersion?: number; modOrder?: string[]; source?: unknown; [key: string]: unknown }
