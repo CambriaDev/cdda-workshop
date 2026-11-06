@@ -42,7 +42,7 @@ const ordered = (role: PartRole, fields: PartDetailField[]): PartDetailField[] =
   const rank = (id: string) => { const i = ids.findIndex(key => id === key || (key === 'damage_reduction' && id.startsWith('damage_reduction_'))); return i < 0 ? ids.length : i; };
   return [...fields].sort((a, b) => rank(a.id) - rank(b.id));
 };
-const energy = (id: string) => /^(?:mechanical_output|mechanical_load|generation|fixed_consumption|full_load_consumption|fuel_type|fuel_options)(?:_|$)/.test(id);
+const energy = (id: string) => /^(?:mechanical_output|mechanical_load|generation|wind_generation_coefficient|cable_loss_percent|unclassified_epower|recharge_demand|fixed_consumption|full_load_consumption|fuel_type|fuel_options)(?:_|$)/.test(id);
 const lifting = (id: string) => ['jack_capacity', 'lift_capacity', 'self_jack_capacity'].includes(id);
 const zeroDefault = (f: PartDetailField) => f.status === 'default' && f.value === 0;
 
@@ -113,7 +113,7 @@ export function getPartDetailLayout(model: PartDetails): PartDetailLayout {
     switch (role) {
       case 'engine': return /^(mechanical_output|fuel_type|fuel_options|full_load_consumption)(_|$)/.test(id);
       case 'alternator': return /^(generation|mechanical_load)(_|$)/.test(id);
-      case 'generator': return id === 'generation';
+      case 'generator': return id === 'generation' || id === 'wind_generation_coefficient';
       case 'reactor': return /^(generation|fuel_type|fuel_options)(_|$)/.test(id) || capacity(id);
       case 'battery': return /^(battery_capacity|recharge_power|ammo_capacity)(_|$)/.test(id);
       case 'tank': return /^(container_|ammo_capacity|battery_capacity)/.test(id);
@@ -121,7 +121,7 @@ export function getPartDetailLayout(model: PartDetails): PartDetailLayout {
       case 'wheel': return /^wheel_/.test(id);
       case 'rotor': return id === 'rotor_effective_diameter';
       case 'lighting': return /^(fixed_consumption|light_intensity|horn_volume)(_|$)/.test(id);
-      case 'utility': return /^(fixed_consumption|full_load_consumption|recharge_power|funnel_radius|muffler_noise_reduction|shock_absorption)(_|$)/.test(id) || lifting(id) || capacity(id) || ['part_qualities', 'pseudo_tools', 'connectable_tools'].includes(id);
+      case 'utility': return /^(fixed_consumption|unclassified_epower|cable_loss_percent|full_load_consumption|recharge_power|recharge_demand|funnel_radius|muffler_noise_reduction|shock_absorption)(_|$)/.test(id) || lifting(id) || capacity(id) || ['part_qualities', 'pseudo_tools', 'connectable_tools'].includes(id);
       case 'passenger': return /^(comfort|floor_bedding_warmth|bonus_fire_warmth_feet|seatbelt_strength)(_|$)/.test(id) || capacity(id);
       case 'protection': return id.startsWith('damage_reduction') || ['collision_damage_modifier', 'durability', 'location'].includes(id);
       case 'structure': return id.startsWith('damage_reduction') || ['collision_damage_modifier', 'durability', 'location'].includes(id);

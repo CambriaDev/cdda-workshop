@@ -24,6 +24,16 @@ const text = (v: unknown): string | undefined => typeof v === 'string' ? v : rec
 const primitive = (v: unknown): DetailPrimitive | undefined => typeof v === 'string' || typeof v === 'boolean' || finite(v) ? v : undefined;
 const get = (d: Definition | undefined, path: string): unknown => path.split('.').reduce<unknown>((v, k) => Array.isArray(v) ? k === 'length' ? v.length : /^\d+$/.test(k) ? v[Number(k)] : undefined : record(v) ? v[k] : undefined, d);
 const HP_W = 745.6998715822702;
+export type ElectricalRole = 'engine' | 'accessory' | 'alternator' | 'solar' | 'wind' | 'water' | 'reactor' | 'recharge' | 'cable' | 'unclassified';
+/** The game's electrical caches are role-based, not inferred from the sign of epower. */
+export function electricalRoles(part: Definition | undefined): ElectricalRole[] {
+  if (!definitionFieldsReliable(part, ['flags']) || (part?.flags !== undefined && (!Array.isArray(part.flags) || !part.flags.every(f => typeof f === 'string')))) return [];
+  const fs = flags(part);
+  if (fs.includes('POWER_TRANSFER')) return ['cable'];
+  const roles: ElectricalRole[] = [];
+  for (const [flag, role] of [['ENGINE', 'engine'], ['ENABLED_DRAINS_EPOWER', 'accessory'], ['ALTERNATOR', 'alternator'], ['SOLAR_PANEL', 'solar'], ['WIND_TURBINE', 'wind'], ['WATER_WHEEL', 'water'], ['REACTOR', 'reactor'], ['RECHARGE', 'recharge']] as const) if (fs.includes(flag)) roles.push(role);
+  return roles.length ? roles : ['unclassified'];
+}
 
 /** Definition-only nominal capabilities, never live/summed vehicle performance.
  * Source: veh_type.h:413-455; veh_type.cpp:272-405,1079; item.h:3446;
@@ -77,7 +87,7 @@ export function describePart(partId: string, indexes: VehicleIndexes, baseItemId
   }
   field(basic, 'durability', part, 'durability', 'part', { parse: integer, fallback: 0 });
   field(basic, 'folded_volume', part, 'folded_volume', 'part', { unit: 'ml', parse: quantity('ml') });
-  const relevantPower = !part || !reliableFlags || !definitionFieldsReliable(part, ['power', 'epower', 'energy_consumption']) || result.flags.some(f => ['ENGINE', 'ALTERNATOR', 'SOLAR_PANEL', 'WIND_TURBINE', 'WATER_WHEEL', 'REACTOR', 'ENABLED_DRAINS_EPOWER'].includes(f)) || ['power', 'epower', 'energy_consumption'].some(k => part[k] !== undefined);
+  const relevantPower = !part || !reliableFlags || !definitionFieldsReliable(part, ['power', 'epower', 'energy_consumption']) || result.flags.some(f => ['ENGINE', 'ALTERNATOR', 'SOLAR_PANEL', 'WIND_TURBINE', 'WATER_WHEEL', 'REACTOR', 'ENABLED_DRAINS_EPOWER', 'RECHARGE', 'POWER_TRANSFER'].includes(f)) || ['power', 'epower', 'energy_consumption'].some(k => part[k] !== undefined);
   const power = relevantPower ? section('power') : [];
   const split = (path: string, positiveId: string, negativeId: string, notes: string[]) => {
     const source = field([], path, part, path, 'part', { unit: 'W', parse: quantity('W', false), fallback: 0, notes });
@@ -88,12 +98,39 @@ export function describePart(partId: string, indexes: VehicleIndexes, baseItemId
     }
   };
   split('power', 'mechanical_output', 'mechanical_load', ['rated_not_actual']);
-  split('epower', 'generation', 'fixed_consumption', ['operating_conditions']);
+  const roles = electricalRoles(part);
+  const epower = field([], 'epower', part, 'epower', 'part', { unit: 'W', parse: quantity('W', false), fallback: 0, notes: ['operating_conditions'] });
+  if (!reliableFlags) {
+    for (const id of ['generation', 'fixed_consumption']) power.push({ ...epower, id, value: null, status: 'unknown', notes: [...epower.notes, 'field_unreliable'] });
+  } else if (roles.includes('cable')) {
+    const validLoss = typeof epower.value === 'number' && epower.value >= 0;
+    power.push({ ...epower, id: 'cable_loss_percent', value: validLoss ? (epower.value as number) / 1000 : null, status: validLoss ? epower.status : 'unknown', unit: '%', notes: ['transmission_loss_not_generation', ...(!validLoss ? ['invalid_value'] : [])], reference: 'vehicle.cpp:5798' });
+  } else if (roles.includes('wind')) {
+    power.push({ ...epower, id: 'wind_generation_coefficient', notes: ['wind_coefficient_not_fixed_generation'], reference: 'vehicle.cpp:5485–5505' });
+  } else if (roles.some(r => ['engine', 'accessory', 'alternator', 'solar', 'water', 'reactor'].includes(r))) {
+    split('epower', 'generation', 'fixed_consumption', ['operating_conditions', roles.includes('engine') ? 'engine_running_auxiliary' : 'classified_electrical_role']);
+    const canGenerate = roles.some(r => ['engine', 'alternator', 'solar', 'water', 'reactor'].includes(r));
+    const canConsume = roles.some(r => ['engine', 'accessory'].includes(r));
+    if (typeof epower.value === 'number' && ((epower.value > 0 && !canGenerate) || (epower.value < 0 && !canConsume))) {
+      const unsupportedId = epower.value > 0 ? 'generation' : 'fixed_consumption';
+      const unsupported = power.find(f => f.id === unsupportedId)!;
+      unsupported.value = null; unsupported.status = 'unknown'; unsupported.notes.push('unclassified_not_generation_or_demand');
+      power.push({ ...epower, id: 'unclassified_epower', notes: ['unclassified_not_generation_or_demand'] });
+    }
+  } else if (part?.epower !== undefined || !definitionFieldsReliable(part, ['epower'])) {
+    power.push({ ...epower, id: 'unclassified_epower', notes: ['unclassified_not_generation_or_demand'] });
+  } else {
+    // No epower exists on this definition; preserve source-backed zero fields.
+    split('epower', 'generation', 'fixed_consumption', ['operating_conditions']);
+  }
+  if (roles.includes('recharge')) field(power, 'recharge_demand', part, 'bonus', 'part', { unit: 'W', parse: integer, fallback: 0, notes: ['conditional_recharge_load'], reference: 'map.cpp:5507–5509; 5569–5571' });
   const conditional = definitionFieldsReliable(part, ['fuel_type']) && ['muscle', 'animal', 'wind'].includes(String(part?.fuel_type));
   if (conditional) power.filter(f => f.id.startsWith('mechanical_')).forEach(f => f.notes.push('conditional_power'));
   if (result.flags.includes('ENGINE') || part?.energy_consumption !== undefined) {
-    const fuel = definitionFieldsReliable(part, ['fuel_type']) && typeof part?.fuel_type === 'string' ? part.fuel_type : undefined;
-    field(power, 'full_load_consumption', part, 'energy_consumption', 'part', { unit: 'W', parse: quantity('W'), fallback: 0, notes: ['rated_not_actual', fuel === 'battery' ? 'full_load_electric' : conditional ? 'conditional_power' : fuel ? 'full_load_fuel' : 'fuel_unknown'] });
+    const fuel = definitionFieldsReliable(part, ['fuel_type', 'fuel_options']) && typeof part?.fuel_type === 'string' && (part.fuel_options === undefined || (Array.isArray(part.fuel_options) && part.fuel_options.every(f => typeof f === 'string'))) ? part.fuel_type : undefined;
+    const fuels = fuel ? [...new Set([fuel, ...((part?.fuel_options as string[] | undefined) ?? [])])] : [];
+    const batteryMode = fuels.includes('battery');
+    field(power, 'full_load_consumption', part, 'energy_consumption', 'part', { unit: 'W', parse: quantity('W'), fallback: 0, notes: ['rated_not_actual', batteryMode ? fuels.length === 1 ? 'full_load_electric' : 'full_load_battery_mode' : conditional ? 'conditional_power' : fuel ? 'full_load_fuel' : 'fuel_unknown'] });
   }
   field(power, 'fuel_type', part, 'fuel_type', 'part', { parse: text });
   if (part?.fuel_options !== undefined) field(power, 'fuel_options', part, 'fuel_options', 'part', { parse: v => Array.isArray(v) && v.every(f => typeof f === 'string') ? v.join(', ') : undefined });

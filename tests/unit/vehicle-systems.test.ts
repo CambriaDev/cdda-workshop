@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { compose, type DataPackage } from '../../src/domain/data';
-import { analyzeVehicleSystems, calculateStats, describePart, exportBlueprint, type Definition, type VehicleIndexes, type VehicleModel, type VehiclePurpose } from '../../src/domain/vehicle';
+import { analyzeVehicleSystems, summarizeVehicleSystems, calculateStats, describePart, exportBlueprint, type Definition, type VehicleIndexes, type VehicleModel, type VehiclePurpose } from '../../src/domain/vehicle';
 
 const def = (id: string, values: Record<string, unknown> = {}): Definition => ({ id, type: 'vehicle_part', ...values });
 function setup() {
@@ -194,7 +194,7 @@ describe('unknown definitions, reliability and immutable data flow', () => {
     expect(report.checks.find(c => c.code === 'driving-controls')!.status).toBe('unknown'); expect(report.tankVolume.complete).toBe(false);
   });
   it('keeps omitted unresolved electrical fields in the inventory instead of a fully-known zero total', () => {
-    const indexes = setup(); indexes.parts.set('lamp', def('lamp', { flags: ['LIGHT'], item: 'steel', _incompleteFields: ['epower'] }));
+    const indexes = setup(); indexes.parts.set('lamp', def('lamp', { flags: ['LIGHT', 'ENABLED_DRAINS_EPOWER'], item: 'steel', _incompleteFields: ['epower'] }));
     const row = analyzeVehicleSystems(vehicle('lamp'), indexes).electrical[0]!;
     expect(row).toMatchObject({ partId: 'lamp', generationW: null, consumptionW: null, mechanicalLoadW: 0 });
     indexes.parts.get('lamp')!._incompleteFields = ['power'];
@@ -221,11 +221,135 @@ describe('unknown definitions, reliability and immutable data flow', () => {
   });
 });
 
+describe('pure source-classified summaries and groups', () => {
+  it('includes zero-epower pure battery engines exactly once as full-load electric demand', () => {
+    const report = analyzeVehicleSystems(vehicle('motor', 'motor', 'alternator'), setup());
+    expect(report.electrical.filter(e => e.partId === 'motor')).toHaveLength(2);
+    const s = summarizeVehicleSystems(report);
+    expect(s.totals.enginePower).toMatchObject({ known: 14080, missing: 0, unit: 'W' });
+    expect(s.totals.fullLoadInput.known).toBe(16000);
+    expect(s.totals.electricalDemand).toMatchObject({ known: 16000, complete: true });
+    expect(s.totals.electricDriveLoad.known).toBe(16000);
+    expect(s.totals.generation.known).toBe(780);
+    expect(s.totals.mechanicalLoad.known).toBe(1492);
+    expect(s.groups.engines).toHaveLength(1);
+    expect(s.groups.engines[0]!.members.map(e => e.partIndex)).toEqual([0, 1]);
+    expect(s.groups.engines[0]!.totals.electricalDemand.known).toBe(16000);
+    expect(s.groups.engines[0]!.key).toBe(JSON.stringify(['engine', 'motor', 'motor_item']));
+  });
+  it('counts ENGINE plus ENABLED_DRAINS once as running auxiliary and separates recharge watts', () => {
+    const indexes = setup(); indexes.parts.get('gas_engine')!.flags = ['ENGINE', 'ENABLED_DRAINS_EPOWER']; indexes.parts.get('gas_engine')!.epower = '-100 W';
+    indexes.parts.set('charger', def('charger', { item: 'steel', flags: ['RECHARGE'], bonus: 600 }));
+    indexes.parts.set('bench', def('bench', { item: 'steel', flags: ['RECHARGE', 'ENABLED_DRAINS_EPOWER'], bonus: 15, epower: '-50 W' }));
+    const s = summarizeVehicleSystems(analyzeVehicleSystems(vehicle('gas_engine', 'charger', 'bench'), indexes));
+    expect(s.totals.electricalDemand).toMatchObject({ known: 765, complete: true });
+    expect(s.loadComponents.engineAuxiliaryLoad.known).toBe(100);
+    expect(s.loadComponents.accessoryLoad.known).toBe(50);
+    expect(s.loadComponents.rechargeLoad.known).toBe(615);
+  });
+  it('keeps mixed battery modes optional and unknown demand without inventing their active fuel', () => {
+    const indexes = setup(); indexes.parts.get('motor')!.fuel_options = ['gasoline']; indexes.parts.get('motor')!.epower = '-40 W';
+    const s = summarizeVehicleSystems(analyzeVehicleSystems(vehicle('motor'), indexes));
+    expect(s.totals.electricalDemand).toMatchObject({ known: 40, missing: 1, complete: false });
+    expect(s.loadComponents.electricDriveLoad).toMatchObject({ known: 0, missing: 1 });
+    expect(s.loadComponents.batteryModeInput).toMatchObject({ known: 8000, complete: true });
+    indexes.parts.get('motor')!._incompleteFields = ['fuel_options', 'epower', 'energy_consumption'];
+    const unknown = summarizeVehicleSystems(analyzeVehicleSystems(vehicle('motor'), indexes));
+    expect(unknown.totals.electricalDemand.missing).toBe(1); // three unknown fields, one physical part
+  });
+  it('does not add wind coefficients or cable loss to fixed generation', () => {
+    const indexes = setup();
+    indexes.parts.set('wind', def('wind', { item: 'steel', flags: ['WIND_TURBINE'], epower: '1 W' }));
+    indexes.parts.set('cable', def('cable', { item: 'steel', flags: ['POWER_TRANSFER'], epower: 25 }));
+    const r = analyzeVehicleSystems(vehicle('alternator', 'wind', 'cable'), indexes), s = summarizeVehicleSystems(r);
+    expect(s.totals.generation).toMatchObject({ known: 780, missing: 1, complete: false });
+    expect(s.totals.electricalDemand).toMatchObject({ known: 0, complete: true });
+    expect(r.electrical.find(e => e.partId === 'wind')).toMatchObject({ windCoefficientW: 1, generationW: null });
+    expect(r.electrical.find(e => e.partId === 'cable')).toMatchObject({ cableLossPercent: 25, generationW: 0, consumptionW: 0 });
+  });
+  it.each([{ flags: [], epower: '9 W', metric: 'generation' }, { flags: [], epower: '-9 W', metric: 'electricalDemand' }, { flags: ['ENABLED_DRAINS_EPOWER'], epower: '9 W', metric: 'generation' }, { flags: ['SOLAR_PANEL'], epower: '-9 W', metric: 'electricalDemand' }])('retains unsupported sign/role as unknown: %j', ({ flags, epower, metric }) => {
+    const indexes = setup(); indexes.parts.set('odd', def('odd', { item: 'steel', flags, epower }));
+    const r = analyzeVehicleSystems(vehicle('odd'), indexes), s = summarizeVehicleSystems(r);
+    expect(r.electrical[0]!.roles).toContain('unclassified');
+    expect(s.totals[metric as 'generation' | 'electricalDemand']).toMatchObject({ known: 0, missing: 1, complete: false });
+    expect(r.electrical[0]!.rawEpowerW).toBe(epower.startsWith('-') ? -9 : 9);
+  });
+  it('keeps recorded battery partial sums, genuine zero, and unknown quantities separate', () => {
+    const indexes = setup(); indexes.items.set('cell_charge', def('cell_charge', { type: 'AMMO', ammo_type: 'battery' }));
+    const v = vehicle('battery', 'battery', 'battery');
+    v.parts[0]!.base = { typeid: 'battery_item', contents: { contents: [{ contents: [{ typeid: 'cell_charge', charges: 300 }, { typeid: 'cell_charge' }, { typeid: 'unknown_resource', charges: 99 }] }] } };
+    v.parts[1]!.base = { typeid: 'battery_item', contents: { contents: [] } };
+    const r = analyzeVehicleSystems(v, indexes), s = summarizeVehicleSystems(r);
+    expect(s.totals.recordedBattery).toMatchObject({ known: 300, missing: 2, complete: false, unit: 'charges' });
+    expect(s.groups.stores[0]!.totals.recordedBattery).toEqual(s.totals.recordedBattery);
+    expect(s.totals.batteryCapacity).toEqual(r.batteryCapacity);
+  });
+  it('uses identical per-part capacity unknowns for legacy arrays and summaries', () => {
+    const r = analyzeVehicleSystems(vehicle('tank', 'lost_mod', 'another_mod'), setup()), s = summarizeVehicleSystems(r);
+    expect(r.tankVolume).toEqual(s.totals.tankVolume);
+    expect(r.batteryCapacity).toEqual(s.totals.batteryCapacity);
+    expect(s.totals.tankVolume).toMatchObject({ known: 60000, missing: 2 });
+    expect(s.totals.enginePower.missing).toBe(2);
+  });
+  it('separates fuel ammo units and marks alternative stores unknown without adding alternatives', () => {
+    const indexes = setup();
+    for (const [id, ammo] of [['a', { pellet: 10 }], ['b', { plutonium: 50 }], ['alt', { pellet: 20, plutonium: 30 }]] as const) {
+      indexes.parts.set(id, def(id, { item: id })); indexes.items.set(id, def(id, { type: 'MAGAZINE', pocket_data: [{ pocket_type: 'MAGAZINE', ammo_restriction: ammo }] }));
+    }
+    const s = summarizeVehicleSystems(analyzeVehicleSystems(vehicle('a', 'a', 'b', 'alt'), indexes));
+    expect(s.fuelCapacities).toEqual([{ ammoType: 'pellet', capacity: { known: 20, missing: 1, complete: false, unit: 'charges' } }, { ammoType: 'plutonium', capacity: { known: 50, missing: 1, complete: false, unit: 'charges' } }]);
+    expect(s.totals.batteryCapacity.known).toBe(0);
+    expect(s.groups.stores.find(g => g.members[0]!.partId === 'alt')!.fuelCapacities.every(f => f.capacity.missing === 1)).toBe(true);
+  });
+  it('splits stable grouping by actual base identity and leaves frozen reports unchanged', () => {
+    const indexes = setup(); indexes.items.set('small', def('small', { type: 'MAGAZINE', pocket_data: [{ pocket_type: 'MAGAZINE', ammo_restriction: { battery: 3 } }] }));
+    const v = vehicle('battery', 'battery', 'battery'); v.parts[1]!.base = { typeid: 'small' };
+    const r = analyzeVehicleSystems(v, indexes), before = JSON.stringify(r);
+    const freeze = (o: unknown) => { if (o && typeof o === 'object') { Object.values(o).forEach(freeze); Object.freeze(o); } }; freeze(r);
+    const s = summarizeVehicleSystems(r);
+    expect(s.groups.stores.map(g => [g.key, g.members.length])).toEqual([[JSON.stringify(['battery', 'battery', 'battery_item']), 2], [JSON.stringify(['battery', 'battery', 'small']), 1]]);
+    expect(s.totals.batteryCapacity.known).toBe(100003);
+    expect(JSON.stringify(r)).toBe(before);
+    expect(summarizeVehicleSystems(r)).toEqual(s);
+  });
+  it('distinguishes genuine empty zero metrics from all-unknown parts and rejects aggregate overflow', () => {
+    const empty = summarizeVehicleSystems(analyzeVehicleSystems(vehicle(), setup()));
+    expect(Object.values(empty.totals).every(m => m.known === 0 && m.complete && m.missing === 0)).toBe(true);
+    const unknown = summarizeVehicleSystems(analyzeVehicleSystems(vehicle('lost_part'), setup()));
+    expect(Object.values(unknown.totals).every(m => m.known === 0 && !m.complete && m.missing === 1)).toBe(true);
+    const r = analyzeVehicleSystems(vehicle('motor', 'motor'), setup());
+    r.electrical[0]!.electricDriveLoadW = Number.MAX_SAFE_INTEGER; r.electrical[1]!.electricDriveLoadW = 1;
+    r.engines[0]!.ratedPowerW = Number.MAX_SAFE_INTEGER; r.engines[1]!.ratedPowerW = 1;
+    const s = summarizeVehicleSystems(r);
+    expect(s.totals.enginePower).toMatchObject({ known: Number.MAX_SAFE_INTEGER, missing: 1, complete: false });
+    expect(s.totals.electricalDemand).toMatchObject({ known: Number.MAX_SAFE_INTEGER, missing: 1, complete: false });
+  });
+  it.each([Infinity, NaN, -1, Number.MAX_VALUE])('never emits invalid sums for an invalid contribution %s', value => {
+    const r = analyzeVehicleSystems(vehicle('motor'), setup());
+    r.electrical[0]!.electricDriveLoadW = value; r.engines[0]!.ratedPowerW = value;
+    const s = summarizeVehicleSystems(r);
+    expect(s.totals.electricalDemand).toMatchObject({ known: 0, missing: 1, complete: false });
+    expect(s.totals.enginePower).toMatchObject({ known: 0, missing: 1 });
+    expect(Object.values(s.totals).every(m => Number.isFinite(m.known) && m.known >= 0)).toBe(true);
+  });
+});
+
 describe('real packaged 0.I-1 systems', () => {
   let indexes: VehicleIndexes;
   beforeAll(() => {
     const pack = JSON.parse(readFileSync('public/datasets/0.I-1/dda.json', 'utf8')) as DataPackage;
     const composition = compose([pack], ['dda']); indexes = { parts: new Map(Object.entries(composition.parts)), items: new Map(Object.entries(composition.items)) };
+  });
+  it('combines real recharge_station 600W, workbench 65W and electric input without counting wind/cables as ratings', () => {
+    const r = analyzeVehicleSystems(vehicle('engine_electric_small', 'recharge_station', 'workbench_with_recharger', 'wind_turbine', 'jumper_cable', 'alternator_car'), indexes);
+    const s = summarizeVehicleSystems(r);
+    expect(s.totals.electricDriveLoad).toMatchObject({ known: 8000, complete: true });
+    expect(s.totals.rechargeLoad).toMatchObject({ known: 615, complete: true });
+    expect(s.totals.accessoryLoad).toMatchObject({ known: 50, complete: true });
+    expect(s.totals.electricalDemand).toMatchObject({ known: 8665, complete: true });
+    expect(s.totals.generation).toMatchObject({ known: 780, missing: 1, complete: false });
+    expect(r.electrical.find(e => e.partId === 'jumper_cable')!.cableLossPercent).toBe(1);
+    expect(r.electrical.find(e => e.partId === 'wind_turbine')!.windCoefficientW).toBe(1);
   });
   it('reports real motor, storage battery, 60L tank and alternator ratings', () => {
     const report = analyzeVehicleSystems(vehicle('frame', 'engine_electric_small', 'storage_battery', 'tank', 'alternator_car'), indexes);

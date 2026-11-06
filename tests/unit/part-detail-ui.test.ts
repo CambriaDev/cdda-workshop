@@ -12,7 +12,7 @@ import { translationText } from '../../src/i18n/gettext';
 function renderDetails(options: { part?: Record<string, unknown>; base?: Record<string, unknown>; unreliablePart?: string[]; unreliableBase?: string[]; english?: boolean; installed?: boolean; testId?: string; afterFeatured?: ReactNode; withoutComposition?: boolean } = {}) {
   const composition = compose([{ id: 'dda', name: 'dda', definitions: [
     { source: 'test/base.json', data: { id: 'base', type: 'GENERIC', name: 'Loose base', description: '<color_red>Base fallback</color> <img src=x onerror=bad()>', weight: '20 kg', volume: '1 L', qualities: [['CUT', 1]], ...options.base } },
-    { source: 'test/part.json', data: { id: 'p', type: 'vehicle_part', item: 'base', name: 'Appliance', description: 'Part description', flags: ['VEH_TOOLS', 'CARGO'], epower: '-500 W', durability: 400, size: '20 L', damage_reduction: { all: 30 }, qualities: [['JACK', 1]], allowed_tools: ['drill'], pseudo_tools: [{ id: 'welder' }], ...options.part } },
+    { source: 'test/part.json', data: { id: 'p', type: 'vehicle_part', item: 'base', name: 'Appliance', description: 'Part description', flags: ['VEH_TOOLS', 'CARGO', 'ENABLED_DRAINS_EPOWER'], epower: '-500 W', durability: 400, size: '20 L', damage_reduction: { all: 30 }, qualities: [['JACK', 1]], allowed_tools: ['drill'], pseudo_tools: [{ id: 'welder' }], ...options.part } },
     { source: 'test/welder.json', data: { id: 'welder', type: 'TOOL', name: 'Welder', qualities: [['WELD', 2]], charged_qualities: [['CUT', 3]] } },
     { source: 'test/drill.json', data: { id: 'drill', type: 'TOOL', name: 'Drill' } },
   ] }], ['dda']);
@@ -117,6 +117,25 @@ describe('read-only detail presentation', () => {
     expect(html.split('Definition ratings below are not current operating values.').length - 1).toBe(1);
     expect(html).not.toContain('A rating, not a current operating value.');
     expect(html).toContain('Full-load electrical draw varies with demand; distinct from fixed draw.');
+  });
+  it('labels source-backed wind, cable and charger parameters without inventing generation or electrical draw', () => {
+    const wind = renderDetails({ part: { flags: ['WIND_TURBINE'], epower: '1 W' } });
+    expect(featuredMarkup(wind)).toContain('data-detail="wind_generation_coefficient"');
+    expect(wind).toContain('not fixed output');
+    expect(wind).toContain('multiplied by local wind power');
+    expect(wind).not.toContain('data-detail="generation"');
+    const cable = renderDetails({ part: { flags: ['POWER_TRANSFER'], epower: '1 kW' } });
+    expect(cable).toContain('Cable transmission loss');
+    expect(cable).toContain('1 %');
+    expect(cable).not.toContain('data-detail="generation"');
+    expect(cable).not.toContain('data-detail="fixed_consumption"');
+    const charger = renderDetails({ part: { flags: ['RECHARGE'], bonus: 600, epower: undefined } });
+    expect(featuredMarkup(charger)).toContain('data-detail="recharge_demand"');
+    expect(charger).toContain('600 W');
+    expect(charger).toContain('while actively charging');
+    const zh = renderDetails({ english: false, part: { flags: ['POWER_TRANSFER'], epower: '1 kW' } });
+    expect(zh).toContain('线缆传输损耗');
+    expect(zh).not.toContain('transmission_loss_not_generation');
   });
   it('labels missing instance fields explicitly, preserves lossless charge tokens, and does not mutate the instance', () => {
     const part = { id: 'test', mount_dx: 0, mount_dy: 0, base: { typeid: 'base', charges: new LosslessNumber('9007199254740993') } };

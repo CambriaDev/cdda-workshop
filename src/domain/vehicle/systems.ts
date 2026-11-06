@@ -1,5 +1,6 @@
-import { describePart } from './details';
-import { nestedItems } from './stats';
+import { describePart, electricalRoles, type ElectricalRole } from './details';
+import { summarizeSystemCapacities } from './system-summary';
+import { nestedItems, parseQuantity } from './stats';
 import { definitionFieldsReliable, flags, record, type Definition, type Metric, type VehicleIndexes, type VehicleModel } from './types';
 
 export type VehiclePurpose = 'self-propelled' | 'passive';
@@ -15,10 +16,15 @@ export interface EngineSystem extends SystemPart {
 export interface StorageSystem extends SystemPart {
   kind: 'tank' | 'battery' | 'fuel'; capacity: number | null; unit: 'ml' | 'charges';
   ammoTypes: string[]; restricted: boolean; allowedFuel: string | null; fuelRestrictionKnown: boolean;
-  recordedResources: { itemId: string; charges: number | null }[]; contentsUnknown: boolean;
+  recordedResources: { itemId: string; charges: number | null; ammoType: string | null; ammoTypeKnown: boolean }[]; contentsUnknown: boolean;
 }
 export interface ElectricalSystem extends SystemPart {
   generationW: number | null; consumptionW: number | null; mechanicalLoadW: number | null;
+  roles: ElectricalRole[]; rawEpowerW: number | null;
+  windCoefficientW: number | null; cableLossPercent: number | null;
+  accessoryLoadW: number | null; engineAuxiliaryLoadW: number | null;
+  electricDriveLoadW: number | null; rechargeLoadW: number | null;
+  batteryModeInputW: number | null; electricDriveUnknown: boolean;
 }
 export interface SystemCheck {
   code: string; status: SystemCheckStatus; severity: 'info' | 'warning';
@@ -27,15 +33,11 @@ export interface SystemCheck {
 export interface VehicleSystemsReport {
   engines: EngineSystem[]; stores: StorageSystem[]; electrical: ElectricalSystem[];
   tankVolume: Metric; batteryCapacity: Metric; unknownParts: number;
+  unknownPartIndices: number[]; unknownStoragePartIndices: number[];
   checks: SystemCheck[];
 }
 
 const newMetric = (unit: string): Metric => ({ known: 0, missing: 0, complete: true, unit });
-const add = (metric: Metric, n: number | null) => {
-  if (n === null || !Number.isFinite(metric.known + n) || metric.known + n > Number.MAX_SAFE_INTEGER) {
-    metric.missing++; metric.complete = false;
-  } else metric.known += n;
-};
 const subtype = (d: Definition | undefined, type: string) => d?.type === type || (Array.isArray(d?.subtypes) && d.subtypes.includes(type));
 const validStrings = (v: unknown): v is string[] => Array.isArray(v) && v.every(s => typeof s === 'string');
 const specialFuels = new Set(['muscle', 'animal', 'wind', 'null']);
@@ -50,7 +52,7 @@ const reference = {
  * Audited against 0.I-1 / 7b2efa5. Inputs, project history and export validation are untouched.
  */
 export function analyzeVehicleSystems(vehicle: VehicleModel, indexes: VehicleIndexes, purpose: VehiclePurpose = 'self-propelled'): VehicleSystemsReport {
-  const report: VehicleSystemsReport = { engines: [], stores: [], electrical: [], tankVolume: newMetric('ml'), batteryCapacity: newMetric('charges'), unknownParts: 0, checks: [] };
+  const report: VehicleSystemsReport = { engines: [], stores: [], electrical: [], tankVolume: newMetric('ml'), batteryCapacity: newMetric('charges'), unknownParts: 0, unknownPartIndices: [], unknownStoragePartIndices: [], checks: [] };
   const partFlags: (string[] | null)[] = [];
   let storageUnknown = false;
   const check = (code: string, status: SystemCheckStatus, notes: string[], ref: string, partIndices: number[] = []) => {
@@ -62,7 +64,7 @@ export function analyzeVehicleSystems(vehicle: VehicleModel, indexes: VehicleInd
     const d = indexes.parts.get(p.id);
     const reliableFlags = definitionFieldsReliable(d, ['flags']) && (d?.flags === undefined || validStrings(d.flags));
     const fs = reliableFlags ? flags(d) : null; partFlags.push(fs);
-    if (!fs) { report.unknownParts++; storageUnknown = true; }
+    if (!fs) { report.unknownParts++; report.unknownPartIndices.push(partIndex); storageUnknown = true; }
     const baseItemId = typeof p.base?.typeid === 'string' ? p.base.typeid : definitionFieldsReliable(d, ['item']) && typeof d?.item === 'string' ? d.item : null;
     const item = baseItemId ? indexes.items.get(baseItemId) : undefined;
     const key = JSON.stringify([p.id, baseItemId]);
@@ -88,9 +90,31 @@ export function analyzeVehicleSystems(vehicle: VehicleModel, indexes: VehicleInd
       }
       report.engines.push({ ...common, ratedPowerW: number('mechanical_output'), fullLoadConsumptionW: number('full_load_consumption'), fuelOptions, conditional: !!fuelOptions?.some(f => ['muscle', 'animal', 'wind'].includes(f)) });
     }
-    if (fs && (['epower', 'power'].some(k => d?.[k] !== undefined || !definitionFieldsReliable(d, [k])) || fs.some(f => ['ALTERNATOR', 'SOLAR_PANEL', 'WIND_TURBINE', 'WATER_WHEEL', 'REACTOR', 'ENABLED_DRAINS_EPOWER'].includes(f)))) {
-      const generationW = number('generation'), consumptionW = number('fixed_consumption'), mechanicalLoadW = number('mechanical_load');
-      if (generationW !== 0 || consumptionW !== 0 || mechanicalLoadW !== 0) report.electrical.push({ ...common, generationW, consumptionW, mechanicalLoadW });
+    const roles = electricalRoles(d);
+    if (fs && (['epower', 'power'].some(k => d?.[k] !== undefined || !definitionFieldsReliable(d, [k])) || roles.some(r => r !== 'unclassified'))) {
+      const rawEpowerW = definitionFieldsReliable(d, ['epower']) ? parseQuantity(d?.epower ?? 0, 'W') ?? null : null;
+      const cable = roles.includes('cable'), wind = roles.includes('wind');
+      const canGenerate = roles.some(r => ['engine', 'alternator', 'solar', 'water', 'reactor'].includes(r));
+      const canConsume = roles.some(r => ['engine', 'accessory'].includes(r));
+      const consumptionW = cable || wind ? 0 : rawEpowerW === null ? null : rawEpowerW >= 0 ? 0 : canConsume ? -rawEpowerW : null;
+      const generationW = cable ? 0 : wind || rawEpowerW === null ? null : rawEpowerW <= 0 ? 0 : canGenerate ? rawEpowerW : null;
+      if (!cable && !wind && ((rawEpowerW === null) || (rawEpowerW > 0 && !canGenerate) || (rawEpowerW < 0 && !canConsume)) && !roles.includes('unclassified')) roles.push('unclassified');
+      const engine = report.engines.find(e => e.partIndex === partIndex);
+      const fuels = engine?.fuelOptions;
+      const hasBatteryMode = !!fuels?.includes('battery');
+      const pureBattery = !!fuels?.length && fuels.every(f => f === 'battery');
+      const electricDriveUnknown = !!engine && (!fuels?.length || (hasBatteryMode && (!pureBattery || engine.fullLoadConsumptionW === null)));
+      const electricDriveLoadW = engine && (!fuels?.length || hasBatteryMode) ? pureBattery ? engine.fullLoadConsumptionW : null : 0;
+      const rechargeLoadW = roles.includes('recharge') ? number('recharge_demand') : 0;
+      const mechanicalLoadW = number('mechanical_load');
+      report.electrical.push({ ...common, roles, rawEpowerW, generationW, consumptionW, mechanicalLoadW,
+        windCoefficientW: wind ? rawEpowerW : null,
+        cableLossPercent: cable && rawEpowerW !== null && rawEpowerW >= 0 ? rawEpowerW / 1000 : null,
+        engineAuxiliaryLoadW: roles.includes('engine') ? consumptionW : 0,
+        accessoryLoadW: !roles.includes('engine') ? consumptionW : 0,
+        electricDriveLoadW, rechargeLoadW, electricDriveUnknown,
+        batteryModeInputW: hasBatteryMode && !pureBattery ? engine!.fullLoadConsumptionW : 0,
+      });
     }
     const pocketsReliable = definitionFieldsReliable(item, ['pocket_data', 'type', 'subtypes']);
     const pockets = pocketsReliable && Array.isArray(item?.pocket_data) && item.pocket_data.every(record) ? item.pocket_data : null;
@@ -103,7 +127,7 @@ export function analyzeVehicleSystems(vehicle: VehicleModel, indexes: VehicleInd
     const isTank = tank || fs?.includes('FLUIDTANK');
     const isFuel = isMagazine || fs?.includes('REACTOR');
     const uncertainStorage = !fs || !pocketsReliable || (item?.pocket_data !== undefined && !pockets);
-    if (uncertainStorage) storageUnknown = true;
+    if (uncertainStorage) { storageUnknown = true; report.unknownStoragePartIndices.push(partIndex); }
     if (!isBattery && !isTank && !isFuel) return;
     const kind = isBattery ? 'battery' : isTank ? 'tank' : 'fuel';
     const restricted = !!pockets?.some(p => ['item_restriction', 'flag_restriction', 'material_restriction', 'holster', 'ablative', 'min_item_length', 'max_item_length', 'min_item_volume', 'max_item_volume'].some(k => p[k] !== undefined && p[k] !== false));
@@ -114,7 +138,12 @@ export function analyzeVehicleSystems(vehicle: VehicleModel, indexes: VehicleInd
     if (kind === 'battery' && (!batteryMagazine || !ammoTypes.includes('battery'))) capacity = null;
     if (kind === 'tank' && !tank) capacity = null;
     const nested = p.base ? nestedItems(p.base) : null;
-    const recordedResources = nested?.items.map(i => ({ itemId: i.typeid!, charges: typeof i.charges === 'number' && Number.isSafeInteger(i.charges) && i.charges >= 0 ? i.charges : null })) ?? [];
+    const recordedResources = nested?.items.map(i => {
+      const resource = indexes.items.get(i.typeid!);
+      const ammoTypeKnown = definitionFieldsReliable(resource, ['ammo_type', 'ammo', 'type', 'subtypes']);
+      const ammoType = ammoTypeKnown && typeof resource?.ammo_type === 'string' ? resource.ammo_type : ammoTypeKnown && record(resource?.ammo) && typeof resource.ammo.ammo_type === 'string' ? resource.ammo.ammo_type : null;
+      return { itemId: i.typeid!, charges: typeof i.charges === 'number' && Number.isSafeInteger(i.charges) && i.charges >= 0 ? i.charges : null, ammoType, ammoTypeKnown };
+    }) ?? [];
     const fuelRestrictionKnown = definitionFieldsReliable(d, ['fuel_type']) && (d?.fuel_type === undefined || typeof d.fuel_type === 'string');
     const allowedFuel = fuelRestrictionKnown && typeof d?.fuel_type === 'string' && d.fuel_type !== 'null' && !fs?.includes('REACTOR') ? d.fuel_type : null;
     const store: StorageSystem = { ...common, kind, capacity, unit: kind === 'tank' ? 'ml' : 'charges', ammoTypes, restricted, allowedFuel, fuelRestrictionKnown,
@@ -123,10 +152,9 @@ export function analyzeVehicleSystems(vehicle: VehicleModel, indexes: VehicleInd
     if (restricted) store.notes.push('restricted_storage');
     if (kind === 'tank') store.notes.push('nominal_volume_not_fuel_capacity');
     report.stores.push(store);
-    if (kind === 'tank') add(report.tankVolume, capacity);
-    if (kind === 'battery') add(report.batteryCapacity, capacity);
   });
-  if (storageUnknown) { add(report.tankVolume, null); add(report.batteryCapacity, null); }
+  const capacities = summarizeSystemCapacities(report);
+  report.tankVolume = capacities.tankVolume; report.batteryCapacity = capacities.batteryCapacity;
   if (!vehicle.parts.length) { check('empty-vehicle', 'not-applicable', ['empty_design'], reference.engine); return report; }
   if (report.unknownParts) check('unknown-definitions', 'unknown', ['unclassified_parts'], 'definitionFieldsReliable');
   const present = (flag: string) => partFlags.flatMap((fs, i) => fs?.includes(flag) ? [i] : []);

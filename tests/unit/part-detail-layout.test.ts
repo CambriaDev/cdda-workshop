@@ -83,7 +83,7 @@ describe('prioritized fields and one-time capability representation', () => {
     expect(featured(unknown).find(f => f.id === 'full_load_consumption')).toMatchObject({ status: 'unknown', value: null });
   });
   it('puts utility above cargo and keeps its physical/protection details secondary', () => {
-    const result = layout({ flags: ['CARGO', 'VEH_TOOLS'], epower: '-500 W', allowed_tools: ['drill'], pseudo_tools: [{ id: 'welder' }], qualities: [['JACK', 1]], size: '20 L', damage_reduction: { all: 40 }, damage_modifier: 10 });
+    const result = layout({ flags: ['CARGO', 'VEH_TOOLS', 'ENABLED_DRAINS_EPOWER'], epower: '-500 W', allowed_tools: ['drill'], pseudo_tools: [{ id: 'welder' }], qualities: [['JACK', 1]], size: '20 L', damage_reduction: { all: 40 }, damage_modifier: 10 });
     expect(result.roles).toEqual(['utility', 'cargo']);
     expect(featuredIds(result)).toContain('fixed_consumption');
     expect(featuredIds(result)).toContain('cargo_capacity');
@@ -93,7 +93,7 @@ describe('prioritized fields and one-time capability representation', () => {
     expect(featuredIds(result)).not.toContain('jack_capacity');
   });
   it('also demotes weight for lighting+cargo while keeping intensity/draw/cargo accessible', () => {
-    const result = layout({ flags: ['CONE_LIGHT', 'CARGO'], epower: '-100 W', bonus: 80, size: '2 L' });
+    const result = layout({ flags: ['CONE_LIGHT', 'CARGO', 'ENABLED_DRAINS_EPOWER'], epower: '-100 W', bonus: 80, size: '2 L' });
     expect(result.primaryRole).toBe('lighting');
     expect(featuredIds(result)).toEqual(expect.arrayContaining(['fixed_consumption', 'light_intensity', 'cargo_capacity']));
     expect(secondaryIds(result)).toContain('weight');
@@ -105,6 +105,18 @@ describe('prioritized fields and one-time capability representation', () => {
     expect(featured(result).find(f => f.id === 'connectable_tools')?.status).toBe('unknown');
     expect(result.secondaryCapabilities).toEqual(['baseItemQualities']);
     expect(result.featuredBlocks.flatMap(b => b.capabilities)).not.toContain('baseItemQualities');
+  });
+  it('features wind coefficients, cable loss and active charger demand without relabeling them as generation', () => {
+    const wind = layout({ flags: ['WIND_TURBINE'], epower: '1 W' });
+    expect(wind.primaryRole).toBe('generator');
+    expect(featuredIds(wind)).toContain('wind_generation_coefficient');
+    expect(featuredIds(wind)).not.toContain('generation');
+    const cable = layout({ flags: ['POWER_TRANSFER'], epower: '1 kW' });
+    expect(featuredIds(cable)).toContain('cable_loss_percent');
+    expect(featuredIds(cable)).not.toContain('generation');
+    const charger = layout({ flags: ['RECHARGE'], bonus: 600 });
+    expect(featuredIds(charger)).toContain('recharge_demand');
+    expect(featured(charger).find(field => field.id === 'recharge_demand')?.value).toBe(600);
   });
   it('retains per-pocket capacities separately with no invented total', () => {
     const result = layout({ flags: ['FLUIDTANK'] }, { pocket_data: [{ pocket_type: 'CONTAINER', max_contains_volume: '5 L', watertight: true }, { pocket_type: 'CONTAINER', max_contains_volume: '10 L', watertight: true }] });

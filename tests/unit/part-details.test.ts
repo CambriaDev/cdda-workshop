@@ -86,21 +86,53 @@ describe('signed power, engine full-load demand and conditions', () => {
     expect(row(d, 'full_load_consumption').value).toBe(8000); expect(row(d, 'full_load_consumption').notes).toContain('fuel_unknown');
   });
   it('interprets bare integer power in legacy kW, not watts', () => {
-    const d = detail({ power: -1, epower: -1, energy_consumption: 8, fuel_type: 'battery' });
+    const d = detail({ flags: ['ENGINE'], power: -1, epower: -1, energy_consumption: 8, fuel_type: 'battery' });
     expect(row(d, 'mechanical_load').value).toBe(1000); expect(row(d, 'fixed_consumption').value).toBe(1000); expect(row(d, 'full_load_consumption').value).toBe(8000);
   });
   it('rejects fractional bare numeric power instead of silently treating it as W', () => {
-    const d = detail({ power: 1.5, epower: -.5 }); expect(row(d, 'mechanical_output').value).toBeNull(); expect(row(d, 'fixed_consumption').value).toBeNull();
+    const d = detail({ flags: ['ENABLED_DRAINS_EPOWER'], power: 1.5, epower: -.5 }); expect(row(d, 'mechanical_output').value).toBeNull(); expect(row(d, 'fixed_consumption').value).toBeNull();
   });
   it('normalizes source milliwatts without mistaking them for mechanical horsepower', () => {
-    expect(row(detail({ epower: '250 mW' }), 'generation').value).toBe(.25);
+    expect(row(detail({ flags: ['SOLAR_PANEL'], epower: '250 mW' }), 'generation').value).toBe(.25);
   });
   it('keeps exact explicit zero known and rejects nonfinite signed power', () => {
-    expect(row(detail({ epower: 0 }), 'generation').status).toBe('known');
+    expect(row(detail({ flags: ['SOLAR_PANEL'], epower: 0 }), 'generation').status).toBe('known');
     expect(row(detail({ power: Infinity }), 'mechanical_load')).toMatchObject({ value: null, status: 'unknown' });
   });
   it('marks muscle/wind/animal power as conditional rather than actual operating output', () => {
     for (const fuel_type of ['muscle', 'wind', 'animal']) expect(row(detail({ flags: ['ENGINE'], power: '1 kW', fuel_type }), 'mechanical_output').notes).toContain('conditional_power');
+  });
+});
+
+describe('source-specific electrical semantics', () => {
+  it('shows cable loss percentage, not generated watts', () => {
+    const d = detail({ flags: ['POWER_TRANSFER'], epower: 25 });
+    expect(row(d, 'cable_loss_percent')).toMatchObject({ value: 25, unit: '%', status: 'known' });
+    expect(rows(d).some(f => ['generation', 'fixed_consumption'].includes(f.id))).toBe(false);
+    expect(row(detail({ flags: ['POWER_TRANSFER'], epower: '-1 kW' }), 'cable_loss_percent')).toMatchObject({ value: null, status: 'unknown' });
+  });
+  it('shows wind coefficient separately from fixed generation', () => {
+    const d = detail({ flags: ['WIND_TURBINE'], epower: '1 W' });
+    expect(row(d, 'wind_generation_coefficient')).toMatchObject({ value: 1, unit: 'W' });
+    expect(rows(d).some(f => f.id === 'generation')).toBe(false);
+  });
+  it('leaves unclassified epower raw instead of implying output or load', () => {
+    const d = detail({ epower: '-50 W' });
+    expect(row(d, 'unclassified_epower')).toMatchObject({ value: -50, unit: 'W' });
+    expect(rows(d).some(f => ['generation', 'fixed_consumption'].includes(f.id))).toBe(false);
+  });
+  it.each([{ flags: ['ENABLED_DRAINS_EPOWER'], epower: '5 W', id: 'generation' }, { flags: ['SOLAR_PANEL'], epower: '-5 W', id: 'fixed_consumption' }])('does not infer unsupported sign-specific role: %j', ({ flags, epower, id }) => {
+    const d = detail({ flags, epower });
+    expect(row(d, id)).toMatchObject({ value: null, status: 'unknown' });
+    expect(row(d, 'unclassified_epower').value).toBe(epower.startsWith('-') ? -5 : 5);
+  });
+  it('interprets recharge bonus as W and distinguishes mixed battery-mode full-load input', () => {
+    const charger = detail({ flags: ['RECHARGE'], bonus: 600 });
+    expect(row(charger, 'recharge_demand')).toMatchObject({ value: 600, unit: 'W' });
+    expect(row(charger, 'recharge_power')).toMatchObject({ value: 600, unit: 'W' });
+    const mixed = detail({ flags: ['ENGINE'], fuel_type: 'battery', fuel_options: ['gasoline'], energy_consumption: '8 kW' });
+    expect(row(mixed, 'full_load_consumption').notes).toContain('full_load_battery_mode');
+    expect(row(mixed, 'full_load_consumption').notes).not.toContain('full_load_electric');
   });
 });
 

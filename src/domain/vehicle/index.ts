@@ -6,3 +6,4 @@ export * from './migration';
 export * from './blueprint';
 export * from './details';
 export * from './systems';
+export * from './system-summary';
