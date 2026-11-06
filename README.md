@@ -109,7 +109,7 @@ npm run test:e2e
 - 28 个第三方目录全部有审计记录；仅 `blazemod` 有已确认许可可分发，另 27 个仅提供报告、不打包其原始内容。
 - 不把 `No_Fungi` 冒充不存在的 `no_fungal_growth`，不把缺失的其他模组替换为“相似” ID。
 - 对未支持的继承 / finalize 语义给出诊断与 `_incomplete` 标记，不用通用深合并伪造游戏加载器。
-- 真实游戏数据遵循 **CC BY-SA 3.0**，来源、署名、许可证与翻译致谢在 `public/datasets/0.I-1/`，随部署离线交付。新增模组必须先确认许可。应用代码目前不另行作开源授权承诺；依赖遵循各自许可证，构建时生成并随离线发布交付 `THIRD-PARTY-NOTICES.txt`。
+- 真实游戏数据遵循 **CC BY-SA 3.0**，来源、署名、许可证与翻译致谢在 `public/datasets/0.I-1/`，随部署离线交付。新增模组必须先确认许可。应用代码遵循仓库根目录的 MIT License（`LICENSE`）；依赖遵循各自许可证，构建时生成并随离线发布交付 `THIRD-PARTY-NOTICES.txt`。
 
 从此工作区父目录的只读源码 / 模组重提取（变量与限制见[开发指南](docs/development.md)及[数据报告](docs/datasets.md)）：
 
