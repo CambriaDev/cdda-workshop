@@ -1,7 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { stripColors, useApp } from '../../app/context';
 import { describePart, type PartDetailField, type VehicleIndexes } from '../../domain/vehicle';
 import { translationText } from '../../i18n/gettext';
+import { getPartDetailLayout, isCapacityDetailField, type PartCapabilityGroup, type PartRole } from './partDetailLayout';
 
 const labels: Record<string, [string, string]> = {
   rotor_effective_diameter: ['旋翼定义直径（基础＋参数）', 'Defined rotor diameter (base + parameter)'],
@@ -18,9 +19,15 @@ const labels: Record<string, [string, string]> = {
 };
 const damageNames: Record<string, [string, string]> = { all: ['全部伤害', 'all damage'], bash: ['钝击', 'bash'], cut: ['切割', 'cut'], stab: ['穿刺', 'stab'], bullet: ['枪弹', 'bullet'], heat: ['热', 'heat'], acid: ['酸', 'acid'], electric: ['电', 'electric'], cold: ['冷', 'cold'], biological: ['生物', 'biological'], pure: ['纯粹', 'pure'] };
 
-export function PartDetails({ partId, indexes, installed = false }: { partId: string; indexes: VehicleIndexes; installed?: boolean }) {
+const roleLabels: Record<PartRole, [string, string]> = {
+  engine: ['发动机', 'Engine'], alternator: ['交流发电机', 'Alternator'], generator: ['环境发电', 'Environmental generation'], reactor: ['反应堆', 'Reactor'], battery: ['电池', 'Battery'], tank: ['液体储罐', 'Liquid tank'], turret: ['车载武器', 'Turret'], wheel: ['车轮', 'Wheel'], rotor: ['旋翼', 'Rotor'], lighting: ['照明与信号', 'Lighting & signals'], utility: ['设备与工具', 'Appliances & tools'], passenger: ['乘员与寝具', 'Passenger & bedding'], protection: ['防护', 'Protection'], structure: ['结构', 'Structure'], cargo: ['货物储存', 'Cargo storage'], fallback: ['其它／未分类', 'Other / unclassified'],
+};
+
+export interface PartDetailsProps { partId: string; indexes: VehicleIndexes; installed?: boolean; testId?: string; afterFeatured?: ReactNode }
+export function PartDetails({ partId, indexes, installed = false, testId, afterFeatured }: PartDetailsProps) {
   const { t, name, catalogs, locale, composition } = useApp();
   const model = useMemo(() => describePart(partId, indexes), [partId, indexes]);
+  const layout = useMemo(() => getPartDetailLayout(model), [model]);
   const definition = composition?.parts[partId];
   const base = composition?.items[model.baseItemId ?? ''];
   const label = (id: string) => {
@@ -74,28 +81,36 @@ export function PartDetails({ partId, indexes, installed = false }: { partId: st
   const basics = model.sections.find(section => section.id === 'basic')?.fields ?? [];
   const descriptionField = basics.find(field => field.id === 'description');
   const baseDescriptionField = basics.find(field => field.id === 'base_description');
-  const description = descriptionField?.status !== 'unknown' ? stripColors(translationText(definition?.description, catalogs[definition?._package ?? ''], locale)) : '';
-  const baseDescription = baseDescriptionField?.status !== 'unknown' ? stripColors(translationText(base?.description, catalogs[base?._package ?? ''], locale)) : '';
-  return <div className="part-specification" data-testid={installed ? 'installed-part-details' : 'library-part-details'}>
-    <h3>{name(definition, partId)}</h3><code>{partId}</code>
-    <p className="description">{description || (descriptionField?.notes.includes('field_unreliable') ? t('部件简介的继承语义未解析，见高级数据。', 'Description inheritance is unresolved; see advanced data.') : t('没有部件专用简介', 'No part-specific description'))}</p>
-    {baseDescription && baseDescription !== description && <details className="base-description"><summary>{t('底层物品简介', 'Base item description')}</summary><p>{baseDescription}</p></details>}
+  const sourcePart = model.advanced.part;
+  const sourceBase = model.advanced.baseItem;
+  const sourceDescription = (source: typeof sourcePart) => stripColors(translationText(source?.description, catalogs[typeof source?._package === 'string' ? source._package : ''], locale)).trim();
+  const description = descriptionField && descriptionField.status !== 'unknown' ? sourceDescription(sourcePart) : '';
+  const baseDescription = baseDescriptionField && baseDescriptionField.status !== 'unknown' ? sourceDescription(sourceBase) : '';
+  const fallbackDescription = !description && !!baseDescription;
+  const fieldsView = (fields: PartDetailField[]) => <dl className="part-properties">{fields.map((field, i) => <div key={`${field.id}-${i}`} data-detail={field.id} data-status={field.status} data-source={field.source} className={field.status === 'unknown' ? 'unknown-value' : ''}><dt>{label(field.id)}</dt><dd>{format(field)}{field.reference && (field.reference.includes('[') || /^(?:ammo_capacity|battery_capacity)/.test(field.id) || field.id === 'bonus') && <small className="detail-reference">{field.reference}</small>}{field.notes.some(code => code !== 'rated_not_actual') && <small className="detail-reference">{field.notes.filter(code => code !== 'rated_not_actual').map(note).join(' ')}</small>}</dd></div>)}</dl>;
+  function capabilitiesView(group: PartCapabilityGroup) {
+    if (group === 'partQualities' || group === 'baseItemQualities') {
+      const source = group === 'partQualities' ? 'part' : 'base_item';
+      return <div className="detail-capability-group" data-capability-group={group} key={group}><h4>{group === 'partQualities' ? t('工具能力与等级', 'Tool qualities & levels') : t('底层物品能力（不代表安装后可用）', 'Base item qualities (not necessarily usable when installed)')}</h4><ul className="part-capabilities">{model.qualities.filter(q => q.source === source).map((quality, i) => <li key={`${quality.source}-${quality.id}-${i}`} data-quality={quality.id} data-status={quality.status} data-source={quality.source}><div><strong>{quality.status === 'known' ? t(`${quality.level}级 `, `Level ${quality.level} `) : `${t('未知等级', 'Unknown level')} `}{name(composition?.byType.tool_quality?.[quality.id], quality.id)}</strong> <code>{quality.id}</code><small className="detail-reference">{source === 'part' ? t('安装部件提供；损坏时不可用', 'Provided by installed part; unavailable when broken') : t('底层物品能力；不代表安装后可用', 'Base item quality; not necessarily usable when installed')}{quality.liftingKg !== undefined && ` · ${quality.liftingKg.toLocaleString(locale)} kg`}</small></div></li>)}</ul></div>;
+    }
+    if (group === 'pseudoTools') return <div className="detail-capability-group" data-capability-group={group} key={group}><h4>{t('提供的伪工具', 'Provided pseudo-tools')}</h4><ul className="part-capabilities">{model.pseudoTools.map((id, index) => {
+      const tool = model.pseudoToolDetails?.[index]?.id === id ? model.pseudoToolDetails[index] : model.pseudoToolDetails?.find(candidate => candidate.id === id);
+      return <li key={`${id}-${index}`} data-pseudo-tool={id}><div><strong>{name(composition?.items[id], id)}</strong> <code>{id}</code>{tool?.qualities.map((quality, i) => <small key={`${quality.id}-${i}`} data-quality={quality.id} data-status={quality.status} className="detail-reference">{name(composition?.byType.tool_quality?.[quality.id], quality.id)} · {quality.status === 'unknown' ? t('等级未知', 'Unknown level') : t(`${quality.level}级`, `Level ${quality.level}`)}{quality.charged && ` · ${t('需充能', 'Requires charge')}`}</small>)}{tool?.notes.map(n => <small key={n} className="detail-reference">{note(n)}</small>)}</div></li>;
+    })}</ul><p className="detail-note">{t('伪工具的用电、充能与动作条件仍受游戏规则限制；不等于人物技能。', 'Pseudo-tool power, charge and action requirements still apply in game; these are not character skills.')}</p></div>;
+    return <div className="detail-capability-group" data-capability-group={group} key={group}><h4>{t('可连接的工具类型', 'Connectable tool types')}</h4><ul className="part-capabilities">{model.connectableTools?.map((id, i) => <li key={`${id}-${i}`} data-connectable-tool={id}><span>{name(composition?.items[id], id)} <code>{id}</code></span></li>)}</ul><p className="detail-note">{t('允许连接不代表已经安装或具备可用能力，当前工具仍取决于实例与游戏条件。', 'Compatibility does not mean a tool is installed or usable; actual tools depend on instance state and game conditions.')}</p></div>;
+  }
+  return <div className="part-specification" data-testid={testId ?? (installed ? 'installed-part-details' : 'library-part-details')}>
+    <h3>{name(definition, stripColors(translationText(sourcePart?.name)) || partId)}</h3><code>{partId}</code>
+    <p className="description" data-description-source={description ? 'part' : fallbackDescription ? 'base_item' : 'unavailable'}>{description || baseDescription || t('没有可用的可靠简介；可展开高级数据查看原始定义。', 'No reliable description is available; inspect the original definition in advanced data.')}</p>
+    {fallbackDescription && <p className="detail-note">{t('简介来源：底层物品', 'Description source: base item')} <code>{model.baseItemId}</code></p>}
+    {descriptionField?.notes.includes('field_unreliable') && <p className="detail-note">{t('部件简介的继承语义未解析，见高级数据。', 'Part description inheritance is unresolved; see advanced data.')}</p>}
+    {description && baseDescription && baseDescription !== description && <details className="base-description"><summary>{t('底层物品简介', 'Base item description')}</summary><p>{baseDescription}</p></details>}
+    <div className="part-role-labels" aria-label={t('部件用途', 'Part purposes')}>{layout.roles.map(role => <span className="part-role-label" key={role} data-role={role} data-primary={role === layout.primaryRole}>{t(...roleLabels[role])}</span>)}</div>
     <p className="detail-note">{t('以下为定义额定值，不是当前实际运行值。', 'Definition ratings below are not current operating values.')}</p>
-    {model.sections.map(section => {
-      const fields = section.fields.filter(field => !['description', 'base_description', 'part_id', 'source', 'base_item_source'].includes(field.id));
-      if (!fields.length) return null;
-      return <details className="spec-section" key={section.id} open><summary>{label(section.id)}</summary><dl className="part-properties">{fields.map((field, i) => <div key={`${field.id}-${i}`} data-detail={field.id} data-status={field.status} data-source={field.source} className={field.status === 'unknown' ? 'unknown-value' : ''}><dt>{label(field.id)}</dt><dd>{format(field)}{field.reference && (field.reference.includes('[') || /^(?:ammo_capacity|battery_capacity)/.test(field.id) || field.id === 'bonus') && <small className="detail-reference">{field.reference}</small>}{field.notes.length > 0 && <small className="detail-reference">{field.notes.map(note).join(' ')}</small>}</dd></div>)}</dl></details>;
-    })}
-    {model.qualities.length > 0 && <details className="spec-section" open><summary>{t('工具能力与等级', 'Tool qualities & levels')}</summary><ul className="part-capabilities">{model.qualities.map((quality, i) => {
-      const qualityDef = composition?.byType.tool_quality?.[quality.id];
-      return <li key={`${quality.source}-${quality.id}-${i}`} data-quality={quality.id}><div><strong>{quality.status === 'known' ? t(`${quality.level}级 `, `Level ${quality.level} `) : `${t('未知等级', 'Unknown level')} `}{name(qualityDef, quality.id)}</strong> <code>{quality.id}</code><small className="detail-reference">{quality.source === 'part' ? t('安装部件提供；损坏时不可用', 'Provided by installed part; unavailable when broken') : t('底层物品能力；不代表安装后可用', 'Base item quality; not necessarily usable when installed')}{quality.liftingKg !== undefined && ` · ${quality.liftingKg.toLocaleString(locale)} kg`}</small></div></li>;
-    })}</ul></details>}
-    {!!model.pseudoTools.length && <details className="spec-section" open><summary>{t('提供的伪工具', 'Provided pseudo-tools')}</summary><ul className="part-capabilities">{model.pseudoTools.map((id, index) => {
-      const tool = model.pseudoToolDetails?.find(candidate => candidate.id === id);
-      return <li key={`${id}-${index}`}><div><strong>{name(composition?.items[id], id)}</strong> <code>{id}</code>{tool?.qualities.map((quality, i) => <small key={`${quality.id}-${i}`} className="detail-reference">{name(composition?.byType.tool_quality?.[quality.id], quality.id)} · {quality.status === 'unknown' ? t('等级未知', 'Unknown level') : t(`${quality.level}级`, `Level ${quality.level}`)}{quality.charged && ` · ${t('需充能', 'Requires charge')}`}</small>)}{tool?.notes.map(n => <small key={n} className="detail-reference">{note(n)}</small>)}</div></li>;
-    })}</ul><p className="detail-note">{t('伪工具的用电、充能与动作条件仍受游戏规则限制；不等于人物技能。', 'Pseudo-tool power, charge and action requirements still apply in game; these are not character skills.')}</p></details>}
-    {!!model.connectableTools?.length && <details className="spec-section" open><summary>{t('可连接的工具类型', 'Connectable tool types')}</summary><ul className="part-capabilities">{model.connectableTools.map(id => <li key={id}><span>{name(composition?.items[id], id)} <code>{id}</code></span></li>)}</ul><p className="detail-note">{t('允许连接不代表已经安装或具备可用能力，当前工具仍取决于实例与游戏条件。', 'Compatibility does not mean a tool is installed or usable; actual tools depend on instance state and game conditions.')}</p></details>}
     {model.notes.length > 0 && <ul className="detail-notes">{model.notes.map((n, i) => <li key={i}>{note(n)}</li>)}</ul>}
+    {layout.featuredBlocks.map(block => <details className="spec-section part-featured-block" key={block.id} data-featured-role={block.role ?? block.id} open><summary>{block.role ? t(...roleLabels[block.role]) : block.id === 'essentials' ? t('重量与耐久', 'Weight & durability') : t('工具能力', 'Tool capabilities')}</summary>{block.fields.length > 0 && fieldsView(block.role === 'utility' ? block.fields.filter(field => !isCapacityDetailField(field)) : block.fields)}{block.role === 'utility' && <p className="detail-note detail-core-note">{t('固定耗电不等于全部操作能耗；操作、伪工具或连接工具可能另需供能、充能与启用条件。', 'Fixed draw is not total operating energy; actions, pseudo-tools or connected tools may require additional power, charge and activation conditions.')}</p>}{block.capabilities.map(capabilitiesView)}{block.role === 'utility' && block.fields.some(isCapacityDetailField) && fieldsView(block.fields.filter(isCapacityDetailField))}</details>)}
+    {afterFeatured}
+    {(layout.remainingSections.length > 0 || layout.secondaryCapabilities.length > 0) && <details className="spec-section part-secondary"><summary>{t('其它参数与底层物品能力', 'Other parameters & base item qualities')}</summary>{layout.remainingSections.map(section => <section key={section.id} data-secondary-section={section.id}><h4>{label(section.id)}</h4>{fieldsView(section.fields)}</section>)}{layout.secondaryCapabilities.map(capabilitiesView)}</details>}
     <details className="spec-section advanced-data"><summary>{t('高级数据与来源', 'Advanced data & sources')}</summary><p className="detail-note">{t('完整已组合的公共定义；未解释字段不代表无效果。原始单位与来源路径保留。', 'Complete composed public definitions. Uninterpreted fields may still have effects; source units and paths are retained.')}</p>{model.flags.length > 0 && <p><strong>{t('标志', 'Flags')}</strong><br />{model.flags.map(flag => <code key={flag} className="detail-flag">{flag}</code>)}</p>}<h4>{t('部件定义', 'Part definition')}</h4><pre>{JSON.stringify(model.advanced.part, null, 2)}</pre><h4>{t('底层物品定义', 'Base item definition')}</h4><pre>{JSON.stringify(model.advanced.baseItem, null, 2)}</pre></details>
   </div>;
 }
